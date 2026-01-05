@@ -293,36 +293,6 @@
   box-shadow: 0 4px 12px oklch(0 0 0 / 0.08);
 }
 
-/* Table Row Premium Hover */
-.table-row-hover {
-  position: relative;
-  transition: background-color 0.15s ease;
-}
-
-.table-row-hover::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--accent-teal);
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.table-row-hover:hover {
-  background-color: oklch(0.97 0.005 180 / 0.5);
-}
-
-.table-row-hover:hover::before {
-  opacity: 1;
-}
-
-.dark .table-row-hover:hover {
-  background-color: oklch(0.25 0.01 180 / 0.3);
-}
-
 /* Stats Card Styling */
 .stats-card {
   position: relative;
