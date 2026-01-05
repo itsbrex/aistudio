@@ -65,11 +65,35 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { IconPlus, IconBluetooth, IconDotsVertical, IconFile, IconFolder, IconFolderOpen, IconFileCode, IconDots, IconFolderSearch, IconDeviceFloppy, IconDownload, IconEye, IconLayout, IconPalette, IconSun, IconMoon, IconDeviceDesktop, IconUser, IconCreditCard, IconSettings, IconKeyboard, IconLanguage, IconBell, IconMail, IconShield, IconHelpCircle, IconFileText, IconLogout } from "@tabler/icons-react"
+import { IconPlus, IconBluetooth, IconDotsVertical, IconFile, IconFolder, IconFolderOpen, IconFileCode, IconDots, IconFolderSearch, IconDeviceFloppy, IconDownload, IconEye, IconLayout, IconPalette, IconSun, IconMoon, IconDeviceDesktop, IconUser, IconCreditCard, IconSettings, IconKeyboard, IconLanguage, IconBell, IconMail, IconShield, IconHelpCircle, IconFileText, IconLogout, IconArrowRight } from "@tabler/icons-react"
+import Link from "next/link"
 
 export function ComponentExample() {
   return (
     <ExampleWrapper>
+      {/* Hero Title Section */}
+      <div className="text-center space-y-4 pb-8 border-b border-border md:col-span-2">
+        <h1 className="text-4xl font-bold tracking-tight">AI Studio</h1>
+        <p className="text-muted-foreground text-lg max-w-md mx-auto">
+          Transform your real estate photos with AI-powered enhancements
+        </p>
+        <div className="flex justify-center gap-3 pt-2">
+          <Button asChild size="lg">
+            <Link href="/dashboard">
+              Dashboard
+              <IconArrowRight className="size-4" />
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="lg">
+            <Link href="/admin">
+              Admin
+              <IconArrowRight className="size-4" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      {/* Component Examples */}
       <CardExample />
       <FormExample />
     </ExampleWrapper>
