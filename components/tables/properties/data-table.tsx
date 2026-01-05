@@ -130,7 +130,7 @@ export function DataTable() {
     <div className="space-y-4">
       <TableToolbar />
 
-      <div className="relative rounded-lg border border-border bg-background">
+      <div className="relative overflow-hidden rounded-xl bg-card shadow-xs ring-1 ring-foreground/10">
         {/* Table Header */}
         <div className="border-b border-border">
           <Table>
@@ -190,8 +190,14 @@ export function DataTable() {
         </div>
 
         {/* Footer with count */}
-        <div className="border-t border-border px-4 py-3 text-sm text-muted-foreground">
-          {tableData.length} of {filteredTotal} properties
+        <div className="border-t px-4 py-3 text-sm text-muted-foreground">
+          <span
+            className="font-mono font-semibold"
+            style={{ color: "var(--accent-teal)" }}
+          >
+            {tableData.length}
+          </span>
+          {" "}of {filteredTotal} properties
           {hasNextPage && " (scroll for more)"}
         </div>
       </div>

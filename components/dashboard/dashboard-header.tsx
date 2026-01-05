@@ -24,7 +24,7 @@ export function DashboardHeader({ userLabel }: DashboardHeaderProps) {
   const pathname = usePathname()
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b bg-background">
       <div className="container mx-auto px-4">
         <div className="flex h-14 items-center justify-between gap-4">
           {/* Left side: Logo + Navigation */}

@@ -14,12 +14,12 @@ import { IconDotsVertical, IconEye, IconPencil, IconTrash } from "@tabler/icons-
 import type { ColumnDef } from "@tanstack/react-table"
 import { memo } from "react"
 
-// Status badge variant mapping
-const statusVariantMap: Record<PropertyStatus, "status-active" | "status-pending" | "status-completed" | "status-archived"> = {
-  active: "status-active",
-  pending: "status-pending",
-  completed: "status-completed",
-  archived: "status-archived",
+// Status color mapping using CSS custom properties
+const statusColorMap: Record<PropertyStatus, string> = {
+  active: "var(--accent-green)",
+  pending: "var(--accent-amber)",
+  completed: "var(--accent-teal)",
+  archived: "var(--accent-red)",
 }
 
 const statusLabelMap: Record<PropertyStatus, string> = {
@@ -39,7 +39,14 @@ const AddressCell = memo(({ address, city, state }: { address: string; city: str
 AddressCell.displayName = "AddressCell"
 
 const StatusCell = memo(({ status }: { status: PropertyStatus }) => (
-  <Badge variant={statusVariantMap[status]}>
+  <Badge
+    variant="outline"
+    className="border-transparent"
+    style={{
+      backgroundColor: `color-mix(in oklch, ${statusColorMap[status]} 15%, transparent)`,
+      color: statusColorMap[status],
+    }}
+  >
     {statusLabelMap[status]}
   </Badge>
 ))
@@ -57,7 +64,10 @@ const TagsCell = memo(({ tags }: { tags: string[] }) => (
 TagsCell.displayName = "TagsCell"
 
 const CostCell = memo(({ cost }: { cost: number }) => (
-  <span className="font-mono text-sm">
+  <span
+    className="font-mono text-sm font-medium"
+    style={{ color: "var(--accent-amber)" }}
+  >
     ${cost.toFixed(2)}
   </span>
 ))
