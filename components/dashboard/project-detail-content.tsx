@@ -16,6 +16,7 @@ import {
   IconArrowsMaximize,
   IconPlus,
   IconRefresh,
+  IconPencil,
 } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,7 @@ import type { Project, ImageGeneration, ProjectStatus } from "@/lib/db/schema"
 import { getTemplateById } from "@/lib/style-templates"
 import { cn } from "@/lib/utils"
 import { AddImagesDialog } from "./add-images-dialog"
+import { ImageMaskEditor } from "./image-mask-editor"
 import { retryImageProcessing } from "@/lib/actions"
 
 const statusConfig: Record<
@@ -60,12 +62,14 @@ function ImageCard({
   image,
   index,
   onSelect,
+  onEdit,
   onRetry,
   isRetrying,
 }: {
   image: ImageGeneration
   index: number
   onSelect: () => void
+  onEdit: () => void
   onRetry: () => void
   isRetrying: boolean
 }) {
@@ -129,12 +133,22 @@ function ImageCard({
 
       {/* Hover overlay for completed images */}
       {isCompleted && (
-        <button
-          onClick={onSelect}
-          className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/40 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-teal)]"
-        >
-          <IconArrowsMaximize className="h-8 w-8 text-white" />
-        </button>
+        <div className="absolute inset-0 flex items-center justify-center gap-3 bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/40 group-hover:opacity-100">
+          <button
+            onClick={onSelect}
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm transition-colors hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-teal)]"
+            title="Compare"
+          >
+            <IconArrowsMaximize className="h-6 w-6" />
+          </button>
+          <button
+            onClick={onEdit}
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm transition-colors hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-teal)]"
+            title="Edit"
+          >
+            <IconPencil className="h-6 w-6" />
+          </button>
+        </div>
       )}
 
       {/* Image number */}
@@ -249,6 +263,7 @@ interface ProjectDetailContentProps {
 export function ProjectDetailContent({ project, images }: ProjectDetailContentProps) {
   const router = useRouter()
   const [selectedImage, setSelectedImage] = React.useState<ImageGeneration | null>(null)
+  const [editingImage, setEditingImage] = React.useState<ImageGeneration | null>(null)
   const [addImagesOpen, setAddImagesOpen] = React.useState(false)
   const [retryingImageId, setRetryingImageId] = React.useState<string | null>(null)
 
@@ -432,6 +447,11 @@ export function ProjectDetailContent({ project, images }: ProjectDetailContentPr
                       setSelectedImage(image)
                     }
                   }}
+                  onEdit={() => {
+                    if (image.status === "completed") {
+                      setEditingImage(image)
+                    }
+                  }}
                   onRetry={() => handleRetry(image.id)}
                   isRetrying={retryingImageId === image.id}
                 />
@@ -471,6 +491,14 @@ export function ProjectDetailContent({ project, images }: ProjectDetailContentPr
         open={addImagesOpen}
         onOpenChange={setAddImagesOpen}
       />
+
+      {/* Mask editor for inpainting */}
+      {editingImage && (
+        <ImageMaskEditor
+          image={editingImage}
+          onClose={() => setEditingImage(null)}
+        />
+      )}
     </>
   )
 }

@@ -43,3 +43,30 @@ export interface NanoBananaProOutput {
   }>
   description?: string
 }
+
+// FLUX Fill Pro - Inpainting/Outpainting model
+export const FLUX_FILL_PRO = "fal-ai/flux-pro/v1/fill"
+
+// Input type for FLUX Fill Pro
+export interface FluxFillInput {
+  image_url: string        // Original image URL
+  mask_url: string         // Black/white mask (white = area to edit)
+  prompt: string           // What to generate in masked area
+  num_inference_steps?: number  // Default 28
+  guidance_scale?: number  // Balance between prompt adherence and quality
+  output_format?: "jpeg" | "png"
+  safety_tolerance?: "1" | "2" | "3" | "4" | "5" | "6"
+}
+
+// Output type for FLUX Fill Pro
+export interface FluxFillOutput {
+  images: Array<{
+    url: string
+    width: number
+    height: number
+    content_type: string
+  }>
+  seed?: number
+  has_nsfw_concepts?: boolean[]
+  prompt?: string
+}
