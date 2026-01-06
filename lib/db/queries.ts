@@ -5,11 +5,18 @@ import {
   workspace,
   project,
   imageGeneration,
+  videoProject,
+  videoClip,
+  musicTrack,
   type User,
   type Workspace,
   type Project,
   type ImageGeneration,
   type ProjectStatus,
+  type VideoProject,
+  type VideoClip,
+  type MusicTrack,
+  type VideoProjectStatus,
 } from "./schema";
 
 // ============================================================================
@@ -581,4 +588,303 @@ export async function getLatestVersionImages(
   return latestVersions.sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
+}
+
+// ============================================================================
+// Video Project Queries
+// ============================================================================
+
+export async function getVideoProjects(
+  workspaceId: string,
+  options?: { limit?: number; offset?: number; status?: VideoProjectStatus }
+): Promise<VideoProject[]> {
+  let query = db
+    .select()
+    .from(videoProject)
+    .where(
+      options?.status
+        ? and(
+            eq(videoProject.workspaceId, workspaceId),
+            eq(videoProject.status, options.status)
+          )
+        : eq(videoProject.workspaceId, workspaceId)
+    )
+    .orderBy(desc(videoProject.createdAt));
+
+  if (options?.limit) {
+    query = query.limit(options.limit) as typeof query;
+  }
+
+  if (options?.offset) {
+    query = query.offset(options.offset) as typeof query;
+  }
+
+  return query;
+}
+
+export async function getVideoProjectById(id: string): Promise<{
+  videoProject: VideoProject;
+  clips: VideoClip[];
+  musicTrack: MusicTrack | null;
+} | null> {
+  const result = await db
+    .select()
+    .from(videoProject)
+    .where(eq(videoProject.id, id))
+    .limit(1);
+
+  if (!result[0]) {
+    return null;
+  }
+
+  const clips = await db
+    .select()
+    .from(videoClip)
+    .where(eq(videoClip.videoProjectId, id))
+    .orderBy(videoClip.sequenceOrder);
+
+  let music: MusicTrack | null = null;
+  if (result[0].musicTrackId) {
+    const musicResult = await db
+      .select()
+      .from(musicTrack)
+      .where(eq(musicTrack.id, result[0].musicTrackId))
+      .limit(1);
+    music = musicResult[0] || null;
+  }
+
+  return {
+    videoProject: result[0],
+    clips,
+    musicTrack: music,
+  };
+}
+
+export async function createVideoProject(
+  data: Omit<VideoProject, "id" | "createdAt" | "updatedAt">
+): Promise<VideoProject> {
+  const id = crypto.randomUUID();
+  const [result] = await db
+    .insert(videoProject)
+    .values({
+      ...data,
+      id,
+    })
+    .returning();
+  return result;
+}
+
+export async function updateVideoProject(
+  id: string,
+  data: Partial<Omit<VideoProject, "id" | "createdAt">>
+): Promise<VideoProject | null> {
+  const result = await db
+    .update(videoProject)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(videoProject.id, id))
+    .returning();
+  return result[0] || null;
+}
+
+export async function deleteVideoProject(id: string): Promise<void> {
+  await db.delete(videoProject).where(eq(videoProject.id, id));
+}
+
+export async function updateVideoProjectCounts(videoProjectId: string): Promise<void> {
+  // Count total clips
+  const [totalResult] = await db
+    .select({ count: count() })
+    .from(videoClip)
+    .where(eq(videoClip.videoProjectId, videoProjectId));
+
+  // Count completed clips
+  const [completedResult] = await db
+    .select({ count: count() })
+    .from(videoClip)
+    .where(
+      and(
+        eq(videoClip.videoProjectId, videoProjectId),
+        eq(videoClip.status, "completed")
+      )
+    );
+
+  const clipCount = totalResult?.count || 0;
+  const completedClipCount = completedResult?.count || 0;
+
+  // Update project
+  await db
+    .update(videoProject)
+    .set({
+      clipCount,
+      completedClipCount,
+      updatedAt: new Date(),
+    })
+    .where(eq(videoProject.id, videoProjectId));
+}
+
+// ============================================================================
+// Video Clip Queries
+// ============================================================================
+
+export async function getVideoClipById(id: string): Promise<VideoClip | null> {
+  const result = await db
+    .select()
+    .from(videoClip)
+    .where(eq(videoClip.id, id))
+    .limit(1);
+  return result[0] || null;
+}
+
+export async function getVideoClips(videoProjectId: string): Promise<VideoClip[]> {
+  return db
+    .select()
+    .from(videoClip)
+    .where(eq(videoClip.videoProjectId, videoProjectId))
+    .orderBy(videoClip.sequenceOrder);
+}
+
+export async function createVideoClip(
+  data: Omit<VideoClip, "id" | "createdAt" | "updatedAt">
+): Promise<VideoClip> {
+  const id = crypto.randomUUID();
+  const [result] = await db
+    .insert(videoClip)
+    .values({
+      ...data,
+      id,
+    })
+    .returning();
+  return result;
+}
+
+export async function createVideoClips(
+  clips: Array<Omit<VideoClip, "id" | "createdAt" | "updatedAt">>
+): Promise<VideoClip[]> {
+  const clipsWithIds = clips.map((clip) => ({
+    ...clip,
+    id: crypto.randomUUID(),
+  }));
+  const result = await db.insert(videoClip).values(clipsWithIds).returning();
+  return result;
+}
+
+export async function updateVideoClip(
+  id: string,
+  data: Partial<Omit<VideoClip, "id" | "createdAt">>
+): Promise<VideoClip | null> {
+  const result = await db
+    .update(videoClip)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(videoClip.id, id))
+    .returning();
+  return result[0] || null;
+}
+
+export async function deleteVideoClip(id: string): Promise<void> {
+  await db.delete(videoClip).where(eq(videoClip.id, id));
+}
+
+export async function updateClipSequenceOrders(
+  clips: Array<{ id: string; sequenceOrder: number }>
+): Promise<void> {
+  for (const clip of clips) {
+    await db
+      .update(videoClip)
+      .set({ sequenceOrder: clip.sequenceOrder, updatedAt: new Date() })
+      .where(eq(videoClip.id, clip.id));
+  }
+}
+
+// ============================================================================
+// Music Track Queries
+// ============================================================================
+
+export async function getMusicTracks(
+  options?: { category?: string; activeOnly?: boolean }
+): Promise<MusicTrack[]> {
+  let query = db.select().from(musicTrack);
+
+  if (options?.category) {
+    query = query.where(eq(musicTrack.category, options.category)) as typeof query;
+  }
+
+  if (options?.activeOnly !== false) {
+    query = query.where(eq(musicTrack.isActive, true)) as typeof query;
+  }
+
+  return query.orderBy(musicTrack.name);
+}
+
+export async function getMusicTrackById(id: string): Promise<MusicTrack | null> {
+  const result = await db
+    .select()
+    .from(musicTrack)
+    .where(eq(musicTrack.id, id))
+    .limit(1);
+  return result[0] || null;
+}
+
+export async function createMusicTrack(
+  data: Omit<MusicTrack, "id" | "createdAt">
+): Promise<MusicTrack> {
+  const id = crypto.randomUUID();
+  const [result] = await db
+    .insert(musicTrack)
+    .values({
+      ...data,
+      id,
+    })
+    .returning();
+  return result;
+}
+
+// ============================================================================
+// Video Stats
+// ============================================================================
+
+export async function getVideoProjectStats(workspaceId: string): Promise<{
+  totalVideos: number;
+  completedVideos: number;
+  processingVideos: number;
+  totalCostCents: number;
+}> {
+  const [totalResult] = await db
+    .select({ count: count() })
+    .from(videoProject)
+    .where(eq(videoProject.workspaceId, workspaceId));
+
+  const [completedResult] = await db
+    .select({ count: count() })
+    .from(videoProject)
+    .where(
+      and(
+        eq(videoProject.workspaceId, workspaceId),
+        eq(videoProject.status, "completed")
+      )
+    );
+
+  const [processingResult] = await db
+    .select({ count: count() })
+    .from(videoProject)
+    .where(
+      and(
+        eq(videoProject.workspaceId, workspaceId),
+        or(
+          eq(videoProject.status, "generating"),
+          eq(videoProject.status, "compiling")
+        )
+      )
+    );
+
+  const [costResult] = await db
+    .select({ total: sum(videoProject.actualCost) })
+    .from(videoProject)
+    .where(eq(videoProject.workspaceId, workspaceId));
+
+  return {
+    totalVideos: totalResult?.count || 0,
+    completedVideos: completedResult?.count || 0,
+    processingVideos: processingResult?.count || 0,
+    totalCostCents: Number(costResult?.total) || 0,
+  };
 }

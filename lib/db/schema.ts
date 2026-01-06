@@ -190,6 +190,149 @@ export const imageGeneration = pgTable(
 );
 
 // ============================================================================
+// Video Project
+// ============================================================================
+
+export const videoProject = pgTable(
+  "video_project",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+
+    // Video details
+    name: text("name").notNull(),
+    description: text("description"),
+
+    // Settings
+    aspectRatio: text("aspect_ratio").notNull().default("16:9"), // "16:9" | "9:16" | "1:1"
+    musicTrackId: text("music_track_id"), // FK to music_track or null for no music
+    musicVolume: integer("music_volume").notNull().default(50), // 0-100
+
+    // Output
+    finalVideoUrl: text("final_video_url"),
+    thumbnailUrl: text("thumbnail_url"),
+    durationSeconds: integer("duration_seconds"), // Total video duration
+
+    // Status tracking
+    status: text("status").notNull().default("draft"), // draft | generating | compiling | completed | failed
+
+    // Cost tracking (denormalized for performance)
+    clipCount: integer("clip_count").notNull().default(0),
+    completedClipCount: integer("completed_clip_count").notNull().default(0),
+    estimatedCost: integer("estimated_cost").notNull().default(0), // In cents ($0.35 = 35)
+    actualCost: integer("actual_cost"), // In cents
+
+    // Error handling
+    errorMessage: text("error_message"),
+
+    // Trigger.dev integration (for real-time progress)
+    triggerRunId: text("trigger_run_id"),
+    triggerAccessToken: text("trigger_access_token"),
+
+    // Metadata (runId for tracking, etc.)
+    metadata: jsonb("metadata"),
+
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("video_project_workspace_idx").on(table.workspaceId),
+    index("video_project_user_idx").on(table.userId),
+    index("video_project_status_idx").on(table.status),
+  ]
+);
+
+// ============================================================================
+// Video Clip (individual 5-second clips for each image)
+// ============================================================================
+
+export const videoClip = pgTable(
+  "video_clip",
+  {
+    id: text("id").primaryKey(),
+    videoProjectId: text("video_project_id")
+      .notNull()
+      .references(() => videoProject.id, { onDelete: "cascade" }),
+
+    // Source image (can be from imageGeneration or external URL)
+    sourceImageUrl: text("source_image_url").notNull(),
+    imageGenerationId: text("image_generation_id").references(
+      () => imageGeneration.id,
+      { onDelete: "set null" }
+    ),
+
+    // Room type for sequencing
+    roomType: text("room_type").notNull(), // exterior-front | living-room | kitchen | bedroom | bathroom | etc.
+    roomLabel: text("room_label"), // Custom label like "Master Bedroom", "Front Yard"
+
+    // Sequence order
+    sequenceOrder: integer("sequence_order").notNull(),
+
+    // AI generation settings
+    motionPrompt: text("motion_prompt"), // Motion description for Kling
+
+    // Output
+    clipUrl: text("clip_url"), // Kling output URL
+    durationSeconds: integer("duration_seconds").notNull().default(5),
+
+    // Status tracking
+    status: text("status").notNull().default("pending"), // pending | processing | completed | failed
+    errorMessage: text("error_message"),
+
+    // Metadata (runId for real-time tracking, Kling response, etc.)
+    metadata: jsonb("metadata"),
+
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("video_clip_project_idx").on(table.videoProjectId),
+    index("video_clip_sequence_idx").on(table.videoProjectId, table.sequenceOrder),
+    index("video_clip_status_idx").on(table.status),
+  ]
+);
+
+// ============================================================================
+// Music Track (pre-curated royalty-free tracks)
+// ============================================================================
+
+export const musicTrack = pgTable(
+  "music_track",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    artist: text("artist"),
+
+    // Categorization
+    category: text("category").notNull(), // modern | classical | upbeat | calm | cinematic
+    mood: text("mood"), // energetic | relaxing | professional | warm | elegant
+
+    // File info
+    audioUrl: text("audio_url").notNull(),
+    durationSeconds: integer("duration_seconds").notNull(),
+    bpm: integer("bpm"), // Beats per minute for tempo matching
+
+    // Preview
+    previewUrl: text("preview_url"), // Short preview clip
+    waveformUrl: text("waveform_url"), // Visual waveform image
+
+    // Licensing
+    licenseType: text("license_type").notNull().default("royalty-free"),
+    attribution: text("attribution"), // Required attribution text if any
+
+    isActive: boolean("is_active").notNull().default(true),
+
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [index("music_track_category_idx").on(table.category)]
+);
+
+// ============================================================================
 // Type Exports
 // ============================================================================
 
@@ -205,10 +348,36 @@ export type NewProject = typeof project.$inferInsert;
 export type ImageGeneration = typeof imageGeneration.$inferSelect;
 export type NewImageGeneration = typeof imageGeneration.$inferInsert;
 
+export type VideoProject = typeof videoProject.$inferSelect;
+export type NewVideoProject = typeof videoProject.$inferInsert;
+
+export type VideoClip = typeof videoClip.$inferSelect;
+export type NewVideoClip = typeof videoClip.$inferInsert;
+
+export type MusicTrack = typeof musicTrack.$inferSelect;
+export type NewMusicTrack = typeof musicTrack.$inferInsert;
+
 export type UserRole = "owner" | "admin" | "member";
 export type ProjectStatus = "pending" | "processing" | "completed" | "failed";
 export type ImageStatus = "pending" | "processing" | "completed" | "failed";
 export type RoomType = "living-room" | "bedroom" | "kitchen" | "bathroom" | "dining-room" | "office";
+
+// Video types
+export type VideoProjectStatus = "draft" | "generating" | "compiling" | "completed" | "failed";
+export type VideoClipStatus = "pending" | "processing" | "completed" | "failed";
+export type VideoAspectRatio = "16:9" | "9:16" | "1:1";
+export type MusicCategory = "modern" | "classical" | "upbeat" | "calm" | "cinematic";
+export type VideoRoomType =
+  | "exterior-front"
+  | "entryway"
+  | "living-room"
+  | "kitchen"
+  | "dining-room"
+  | "bedroom"
+  | "bathroom"
+  | "office"
+  | "exterior-back"
+  | "other";
 
 // ============================================================================
 // BILLING SCHEMA (TODO: Uncomment when ready to implement)

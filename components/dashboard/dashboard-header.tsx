@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { SignOutButton } from "./sign-out-button"
-import { IconSparkles, IconSettings } from "@tabler/icons-react"
+import { IconSparkles, IconSettings, IconMovie } from "@tabler/icons-react"
 
 type DashboardHeaderProps = {
   userLabel?: string
@@ -14,6 +14,7 @@ type DashboardHeaderProps = {
 
 const navItems = [
   { href: "/dashboard", label: "Projects", icon: IconSparkles },
+  { href: "/video", label: "Videos", icon: IconMovie },
   { href: "/dashboard/settings", label: "Settings", icon: IconSettings },
 ] as const
 
