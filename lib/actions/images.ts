@@ -102,7 +102,7 @@ export async function createSignedUploadUrls(
 // Record images in database after client-side upload completes
 export async function recordUploadedImages(
   projectId: string,
-  images: { imageId: string; path: string; fileName: string; fileSize: number; contentType: string }[]
+  images: { imageId: string; path: string; fileName: string; fileSize: number; contentType: string; roomType?: string | null }[]
 ): Promise<ActionResult<ImageGeneration[]>> {
   const session = await auth.api.getSession({
     headers: await headers(),
@@ -137,14 +137,15 @@ export async function recordUploadedImages(
     return { success: false, error: "Style template not found" }
   }
 
-  // Generate prompt with room type context
-  const prompt = generatePrompt(template, projectData.project.roomType)
-
   try {
     const uploadedImages: ImageGeneration[] = []
 
     for (const image of images) {
       const publicUrl = getPublicUrl(image.path)
+
+      // Use per-image room type if provided, otherwise fall back to project room type
+      const roomType = image.roomType || projectData.project.roomType
+      const prompt = generatePrompt(template, roomType)
 
       // Create database record
       const imageRecord = await createImageGeneration({
@@ -159,7 +160,7 @@ export async function recordUploadedImages(
         metadata: {
           templateId: template.id,
           templateName: template.name,
-          roomType: projectData.project.roomType,
+          roomType,
           originalFileName: image.fileName,
           originalFileSize: image.fileSize,
           contentType: image.contentType,

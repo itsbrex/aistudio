@@ -20,13 +20,22 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useImageUpload } from "@/hooks/use-image-upload"
+import { ROOM_TYPES } from "@/lib/style-templates"
 
 interface UploadedImage {
   id: string
   file: File
   preview: string
   name: string
+  roomType: string | null
 }
 
 interface AddImagesDialogProps {
@@ -75,10 +84,19 @@ export function AddImagesDialog({
       file,
       preview: URL.createObjectURL(file),
       name: file.name,
+      roomType: null,
     }))
 
     setImages((prev) => [...prev, ...newImages])
   }, [images.length, maxImages])
+
+  const updateImageRoomType = useCallback((id: string, roomType: string) => {
+    setImages((prev) =>
+      prev.map((img) =>
+        img.id === id ? { ...img, roomType } : img
+      )
+    )
+  }, [])
 
   const removeImage = useCallback((id: string) => {
     setImages((prev) => {
@@ -137,7 +155,8 @@ export function AddImagesDialog({
 
     try {
       const files = images.map((img) => img.file)
-      const uploadSuccess = await imageUpload.uploadImages(projectId, files)
+      const roomTypes = images.map((img) => img.roomType)
+      const uploadSuccess = await imageUpload.uploadImages(projectId, files, roomTypes)
 
       if (uploadSuccess) {
         handleReset()
@@ -155,7 +174,7 @@ export function AddImagesDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent size="md" className="flex max-h-[80vh] flex-col gap-0 overflow-hidden p-0">
+      <DialogContent size="lg" className="flex max-h-[80vh] flex-col gap-0 overflow-hidden p-0">
         {/* Header */}
         <div className="border-b px-6 py-4">
           <DialogHeader>
@@ -249,22 +268,23 @@ export function AddImagesDialog({
                     )}
                   </div>
 
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-3 gap-3">
                     {images.map((image, index) => (
                       <div
                         key={image.id}
-                        className="animate-fade-in-up group relative aspect-square overflow-hidden rounded-lg bg-muted ring-1 ring-foreground/5"
+                        className="animate-fade-in-up group relative overflow-hidden rounded-lg bg-muted ring-1 ring-foreground/5"
                         style={{ animationDelay: `${index * 50}ms` }}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={image.preview}
-                          alt={image.name}
-                          className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-                        />
+                        {/* Image preview */}
+                        <div className="relative aspect-square">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={image.preview}
+                            alt={image.name}
+                            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          />
 
-                        {/* Remove button */}
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/40 group-hover:opacity-100">
+                          {/* Remove button */}
                           <Button
                             variant="secondary"
                             size="icon-sm"
@@ -272,10 +292,29 @@ export function AddImagesDialog({
                               e.stopPropagation()
                               removeImage(image.id)
                             }}
-                            className="h-6 w-6 rounded-full bg-white/90 text-foreground hover:bg-white"
+                            className="absolute right-1 top-1 h-6 w-6 rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
                           >
                             <IconX className="h-3.5 w-3.5" />
                           </Button>
+                        </div>
+
+                        {/* Room type dropdown */}
+                        <div className="p-2">
+                          <Select
+                            value={image.roomType || ""}
+                            onValueChange={(value) => updateImageRoomType(image.id, value)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Select room type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROOM_TYPES.map((room) => (
+                                <SelectItem key={room.id} value={room.id} className="text-xs">
+                                  {room.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                     ))}

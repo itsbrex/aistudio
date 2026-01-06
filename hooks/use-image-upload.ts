@@ -12,7 +12,7 @@ export interface UploadProgress {
 }
 
 interface UseImageUploadReturn {
-  uploadImages: (projectId: string, files: File[]) => Promise<boolean>
+  uploadImages: (projectId: string, files: File[], roomTypes?: (string | null)[]) => Promise<boolean>
   progress: UploadProgress[]
   isUploading: boolean
   error: string | null
@@ -30,7 +30,7 @@ export function useImageUpload(): UseImageUploadReturn {
     setError(null)
   }, [])
 
-  const uploadImages = useCallback(async (projectId: string, files: File[]): Promise<boolean> => {
+  const uploadImages = useCallback(async (projectId: string, files: File[], roomTypes?: (string | null)[]): Promise<boolean> => {
     if (files.length === 0) return false
 
     setIsUploading(true)
@@ -73,11 +73,12 @@ export function useImageUpload(): UseImageUploadReturn {
       )
 
       // Step 2: Upload files directly to Supabase
-      const uploadedImages: { imageId: string; path: string; fileName: string; fileSize: number; contentType: string }[] = []
+      const uploadedImages: { imageId: string; path: string; fileName: string; fileSize: number; contentType: string; roomType: string | null }[] = []
 
       for (let i = 0; i < signedUrls.length; i++) {
         const { imageId, signedUrl, path } = signedUrls[i]
         const file = files[i]
+        const roomType = roomTypes?.[i] || null
 
         try {
           // Upload to Supabase using signed URL
@@ -108,6 +109,7 @@ export function useImageUpload(): UseImageUploadReturn {
             fileName: file.name,
             fileSize: file.size,
             contentType: file.type,
+            roomType,
           })
         } catch (uploadError) {
           // Mark this file as failed
