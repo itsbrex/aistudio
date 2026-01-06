@@ -13,4 +13,5 @@ export {
   deleteProjectImage,
   retryImageProcessing,
   updateImageStatus,
+  regenerateImage,
 } from "./images"

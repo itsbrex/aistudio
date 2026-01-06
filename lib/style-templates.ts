@@ -7,59 +7,87 @@ export interface StyleTemplate {
   category: StyleCategory
   thumbnail: string
   prompt: string
-  estimatedCost: number
+  comingSoon?: boolean
+}
+
+// Room types for context in prompts
+export interface RoomTypeOption {
+  id: string
+  label: string
+  icon: string // Tabler icon name
+  description: string
+}
+
+export const ROOM_TYPES: RoomTypeOption[] = [
+  {
+    id: "living-room",
+    label: "Living Room",
+    icon: "IconSofa",
+    description: "Living spaces, family rooms, lounges",
+  },
+  {
+    id: "bedroom",
+    label: "Bedroom",
+    icon: "IconBed",
+    description: "Bedrooms, master suites, guest rooms",
+  },
+  {
+    id: "kitchen",
+    label: "Kitchen",
+    icon: "IconToolsKitchen2",
+    description: "Kitchens and cooking areas",
+  },
+  {
+    id: "bathroom",
+    label: "Bathroom",
+    icon: "IconBath",
+    description: "Bathrooms, en-suites, powder rooms",
+  },
+  {
+    id: "dining-room",
+    label: "Dining Room",
+    icon: "IconArmchair",
+    description: "Dining areas and breakfast nooks",
+  },
+  {
+    id: "office",
+    label: "Office",
+    icon: "IconDesk",
+    description: "Home offices and study rooms",
+  },
+]
+
+export function getRoomTypeById(id: string): RoomTypeOption | undefined {
+  return ROOM_TYPES.find((r) => r.id === id)
+}
+
+// Generate a prompt with room type context
+export function generatePrompt(template: StyleTemplate, roomType: string | null): string {
+  if (!roomType) {
+    return template.prompt
+  }
+  const roomLabel = roomType.replace(/-/g, " ")
+  return `This is a ${roomLabel}. ${template.prompt}`
 }
 
 export const STYLE_TEMPLATES: StyleTemplate[] = [
   {
-    id: "modern-minimalist",
-    name: "Modern Minimalist",
-    description: "Clean lines, neutral tones, contemporary furniture",
+    id: "scandinavian",
+    name: "Scandinavian",
+    description: "Light, airy spaces with natural wood and minimal decor",
     category: "staging",
-    thumbnail: "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=400&h=300&fit=crop",
+    thumbnail: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&h=300&fit=crop",
     prompt:
-      "Professional real estate photo with modern minimalist staging. Add contemporary furniture with clean lines, neutral color palette of whites, grays, and natural wood tones. Ensure the space looks spacious, bright, and move-in ready. Maintain architectural details and natural lighting.",
-    estimatedCost: 0.039,
+      "Transform into a Scandinavian-style interior. Add light wooden furniture, white and neutral tones, natural textures like linen and wool, minimalist decor with clean lines. Include plants for freshness. The space should feel bright, calm, and inviting with excellent natural lighting.",
   },
   {
-    id: "luxury-high-end",
-    name: "Luxury High-End",
-    description: "Premium furnishings, rich textures, elegant styling",
+    id: "coming-soon",
+    name: "More Styles Coming Soon",
+    description: "New design templates are on the way",
     category: "staging",
-    thumbnail: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=400&h=300&fit=crop",
-    prompt:
-      "Transform into a luxury high-end property photo. Add premium furniture pieces, rich textures like velvet and marble, elegant lighting fixtures, and sophisticated decor. Include tasteful art and accessories. The style should evoke wealth and exclusivity while remaining tasteful.",
-    estimatedCost: 0.039,
-  },
-  {
-    id: "warm-cozy",
-    name: "Warm & Cozy",
-    description: "Inviting atmosphere with soft textures and warm lighting",
-    category: "atmosphere",
-    thumbnail: "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=400&h=300&fit=crop",
-    prompt:
-      "Create a warm and cozy atmosphere. Add comfortable furniture with soft textures, warm lighting from lamps and natural light, plush rugs, and homey accessories like throw blankets and pillows. Colors should be warm earth tones. The space should feel inviting and livable.",
-    estimatedCost: 0.039,
-  },
-  {
-    id: "twilight-exterior",
-    name: "Twilight Exterior",
-    description: "Golden hour lighting with dramatic sky",
-    category: "exterior",
-    thumbnail: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=400&h=300&fit=crop",
-    prompt:
-      "Transform this exterior photo to twilight/golden hour lighting. Add a warm, dramatic sky with soft oranges and purples. Enable interior lights to create a warm glow from windows. Enhance landscaping visibility and add subtle outdoor lighting. The result should look like a professional twilight real estate photo.",
-    estimatedCost: 0.039,
-  },
-  {
-    id: "professional-lighting",
-    name: "Professional Lighting",
-    description: "Balanced exposure, enhanced natural light",
-    category: "lighting",
-    thumbnail: "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=400&h=300&fit=crop",
-    prompt:
-      "Enhance this photo with professional real estate lighting. Balance all exposures, brighten dark corners, enhance window views without blowing out highlights. Add subtle fill light to shadows. Colors should be accurate and vibrant. The result should look like a professional HDR real estate photo.",
-    estimatedCost: 0.039,
+    thumbnail: "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=400&h=300&fit=crop",
+    prompt: "",
+    comingSoon: true,
   },
 ]
 
@@ -69,6 +97,10 @@ export function getTemplateById(id: string): StyleTemplate | undefined {
 
 export function getTemplatesByCategory(category: StyleCategory): StyleTemplate[] {
   return STYLE_TEMPLATES.filter((t) => t.category === category)
+}
+
+export function getSelectableTemplates(): StyleTemplate[] {
+  return STYLE_TEMPLATES.filter((t) => !t.comingSoon)
 }
 
 export const ALL_CATEGORIES: StyleCategory[] = ["staging", "lighting", "exterior", "atmosphere"]

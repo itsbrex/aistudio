@@ -51,6 +51,7 @@ export async function createProjectAction(
 
   const name = formData.get("name") as string
   const styleTemplateId = formData.get("styleTemplateId") as string
+  const roomType = formData.get("roomType") as string | null
 
   if (!name || !styleTemplateId) {
     return { success: false, error: "Name and style template are required" }
@@ -62,6 +63,7 @@ export async function createProjectAction(
       userId: session.user.id,
       name,
       styleTemplateId,
+      roomType: roomType || null,
       thumbnailUrl: null,
       status: "pending",
       imageCount: 0,

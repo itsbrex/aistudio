@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import {
   IconArrowLeft,
   IconDownload,
@@ -13,6 +14,8 @@ import {
   IconLoader2,
   IconAlertTriangle,
   IconArrowsMaximize,
+  IconPlus,
+  IconRefresh,
 } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
@@ -20,6 +23,8 @@ import { Badge } from "@/components/ui/badge"
 import type { Project, ImageGeneration, ProjectStatus } from "@/lib/db/schema"
 import { getTemplateById } from "@/lib/style-templates"
 import { cn } from "@/lib/utils"
+import { AddImagesDialog } from "./add-images-dialog"
+import { retryImageProcessing } from "@/lib/actions"
 
 const statusConfig: Record<
   ProjectStatus,
@@ -55,20 +60,23 @@ function ImageCard({
   image,
   index,
   onSelect,
+  onRetry,
+  isRetrying,
 }: {
   image: ImageGeneration
   index: number
   onSelect: () => void
+  onRetry: () => void
+  isRetrying: boolean
 }) {
   const isCompleted = image.status === "completed"
   const displayUrl = isCompleted && image.resultImageUrl ? image.resultImageUrl : image.originalImageUrl
 
   return (
-    <button
-      onClick={onSelect}
+    <div
       className={cn(
         "animate-fade-in-up group relative aspect-square overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/5 transition-all duration-200",
-        "hover:ring-foreground/10 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-teal)]"
+        isCompleted && "hover:ring-foreground/10 hover:shadow-lg"
       )}
       style={{ animationDelay: `${index * 50}ms` }}
     >
@@ -97,16 +105,36 @@ function ImageCard({
             <div className="flex flex-col items-center gap-2">
               <IconAlertTriangle className="h-8 w-8 text-red-400" />
               <span className="text-sm font-medium text-red-400">Failed</span>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRetry()
+                }}
+                disabled={isRetrying}
+                className="mt-1 gap-1.5 bg-white/90 text-foreground hover:bg-white"
+              >
+                {isRetrying ? (
+                  <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <IconRefresh className="h-3.5 w-3.5" />
+                )}
+                Retry
+              </Button>
             </div>
           )}
         </div>
       )}
 
-      {/* Hover overlay */}
+      {/* Hover overlay for completed images */}
       {isCompleted && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/40 group-hover:opacity-100">
+        <button
+          onClick={onSelect}
+          className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/40 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-teal)]"
+        >
           <IconArrowsMaximize className="h-8 w-8 text-white" />
-        </div>
+        </button>
       )}
 
       {/* Image number */}
@@ -120,7 +148,7 @@ function ImageCard({
           <IconCheck className="h-3.5 w-3.5 text-white" />
         </div>
       )}
-    </button>
+    </div>
   )
 }
 
@@ -219,11 +247,44 @@ interface ProjectDetailContentProps {
 }
 
 export function ProjectDetailContent({ project, images }: ProjectDetailContentProps) {
+  const router = useRouter()
   const [selectedImage, setSelectedImage] = React.useState<ImageGeneration | null>(null)
+  const [addImagesOpen, setAddImagesOpen] = React.useState(false)
+  const [retryingImageId, setRetryingImageId] = React.useState<string | null>(null)
 
   const template = getTemplateById(project.styleTemplateId)
   const status = statusConfig[project.status as ProjectStatus] || statusConfig.pending
   const completedImages = images.filter((img) => img.status === "completed")
+  const canAddMore = images.length < 10
+
+  const handleRetry = async (imageId: string) => {
+    setRetryingImageId(imageId)
+    try {
+      const result = await retryImageProcessing(imageId)
+      if (result.success) {
+        router.refresh()
+      }
+    } catch (error) {
+      console.error("Failed to retry:", error)
+    } finally {
+      setRetryingImageId(null)
+    }
+  }
+
+  // Polling for processing images
+  React.useEffect(() => {
+    const processingImages = images.filter(
+      (img) => img.status === "processing" || img.status === "pending"
+    )
+
+    if (processingImages.length === 0) return
+
+    const interval = setInterval(() => {
+      router.refresh()
+    }, 5000) // Poll every 5 seconds
+
+    return () => clearInterval(interval)
+  }, [images, router])
 
   return (
     <>
@@ -251,12 +312,24 @@ export function ProjectDetailContent({ project, images }: ProjectDetailContentPr
             </div>
           </div>
 
-          {completedImages.length > 0 && (
-            <Button className="gap-2" style={{ backgroundColor: "var(--accent-teal)" }}>
-              <IconDownload className="h-4 w-4" />
-              Download All
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {canAddMore && (
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => setAddImagesOpen(true)}
+              >
+                <IconPlus className="h-4 w-4" />
+                Add More
+              </Button>
+            )}
+            {completedImages.length > 0 && (
+              <Button className="gap-2" style={{ backgroundColor: "var(--accent-teal)" }}>
+                <IconDownload className="h-4 w-4" />
+                Download All
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Stats */}
@@ -359,6 +432,8 @@ export function ProjectDetailContent({ project, images }: ProjectDetailContentPr
                       setSelectedImage(image)
                     }
                   }}
+                  onRetry={() => handleRetry(image.id)}
+                  isRetrying={retryingImageId === image.id}
                 />
               ))}
             </div>
@@ -366,6 +441,14 @@ export function ProjectDetailContent({ project, images }: ProjectDetailContentPr
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-foreground/10 py-12 text-center">
               <IconPhoto className="h-12 w-12 text-muted-foreground/30" />
               <p className="mt-4 text-sm text-muted-foreground">No images in this project yet</p>
+              <Button
+                variant="outline"
+                className="mt-4 gap-2"
+                onClick={() => setAddImagesOpen(true)}
+              >
+                <IconPlus className="h-4 w-4" />
+                Add Images
+              </Button>
             </div>
           )}
         </div>
@@ -379,6 +462,15 @@ export function ProjectDetailContent({ project, images }: ProjectDetailContentPr
           onClose={() => setSelectedImage(null)}
         />
       )}
+
+      {/* Add images dialog */}
+      <AddImagesDialog
+        projectId={project.id}
+        projectName={project.name}
+        currentImageCount={images.length}
+        open={addImagesOpen}
+        onOpenChange={setAddImagesOpen}
+      />
     </>
   )
 }

@@ -124,6 +124,7 @@ export const project = pgTable(
     // Project details
     name: text("name").notNull(),
     styleTemplateId: text("style_template_id").notNull(),
+    roomType: text("room_type"), // living-room | bedroom | kitchen | bathroom | dining-room | office
     thumbnailUrl: text("thumbnail_url"),
 
     // Status tracking
@@ -202,6 +203,7 @@ export type NewImageGeneration = typeof imageGeneration.$inferInsert;
 export type UserRole = "owner" | "admin" | "member";
 export type ProjectStatus = "pending" | "processing" | "completed" | "failed";
 export type ImageStatus = "pending" | "processing" | "completed" | "failed";
+export type RoomType = "living-room" | "bedroom" | "kitchen" | "bathroom" | "dining-room" | "office";
 
 // ============================================================================
 // BILLING SCHEMA (TODO: Uncomment when ready to implement)

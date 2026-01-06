@@ -25,7 +25,7 @@ import {
   createSignedUploadUrl,
   getPublicUrl,
 } from "@/lib/supabase"
-import { getTemplateById } from "@/lib/style-templates"
+import { getTemplateById, generatePrompt } from "@/lib/style-templates"
 
 export type ActionResult<T> = {
   success: true
@@ -137,6 +137,9 @@ export async function recordUploadedImages(
     return { success: false, error: "Style template not found" }
   }
 
+  // Generate prompt with room type context
+  const prompt = generatePrompt(template, projectData.project.roomType)
+
   try {
     const uploadedImages: ImageGeneration[] = []
 
@@ -150,13 +153,13 @@ export async function recordUploadedImages(
         projectId,
         originalImageUrl: publicUrl,
         resultImageUrl: null,
-        prompt: template.prompt,
+        prompt,
         status: "pending",
         errorMessage: null,
         metadata: {
           templateId: template.id,
           templateName: template.name,
-          estimatedCost: template.estimatedCost,
+          roomType: projectData.project.roomType,
           originalFileName: image.fileName,
           originalFileSize: image.fileSize,
           contentType: image.contentType,
@@ -175,6 +178,22 @@ export async function recordUploadedImages(
 
     // Update project counts
     await updateProjectCounts(projectId)
+
+    // Trigger image processing for each uploaded image (fire-and-forget)
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    for (const image of uploadedImages) {
+      // Update status to processing
+      await updateImageGeneration(image.id, { status: "processing" })
+
+      // Fire-and-forget: trigger processing API
+      fetch(`${baseUrl}/api/process-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageId: image.id }),
+      }).catch((err) => {
+        console.error(`Failed to trigger processing for image ${image.id}:`, err)
+      })
+    }
 
     revalidatePath("/dashboard")
     revalidatePath(`/dashboard/${projectId}`)
@@ -342,6 +361,95 @@ export async function updateImageStatus(
   } catch (error) {
     console.error("Failed to update image status:", error)
     return { success: false, error: "Failed to update image status" }
+  }
+}
+
+// Regenerate an image with the same or different style
+export async function regenerateImage(
+  imageId: string,
+  newTemplateId?: string
+): Promise<ActionResult<ImageGeneration>> {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  })
+
+  if (!session) {
+    return { success: false, error: "Unauthorized" }
+  }
+
+  // Get user's workspace
+  const currentUser = await db
+    .select()
+    .from(user)
+    .where(eq(user.id, session.user.id))
+    .limit(1)
+
+  if (!currentUser[0]?.workspaceId) {
+    return { success: false, error: "Workspace not found" }
+  }
+
+  // Get image record
+  const image = await getImageGenerationById(imageId)
+  if (!image || image.workspaceId !== currentUser[0].workspaceId) {
+    return { success: false, error: "Image not found" }
+  }
+
+  // Get the template (use new one if provided, otherwise use existing)
+  const templateId = newTemplateId || (image.metadata as { templateId?: string })?.templateId
+  const template = templateId ? getTemplateById(templateId) : null
+
+  if (!template) {
+    return { success: false, error: "Style template not found" }
+  }
+
+  // Get project to get room type for prompt generation
+  const projectData = await getProjectById(image.projectId)
+  const roomType = projectData?.project.roomType || (image.metadata as { roomType?: string })?.roomType || null
+
+  // Generate prompt with room type context
+  const prompt = generatePrompt(template, roomType)
+
+  try {
+    // Reset status to pending and update prompt if using new template
+    const updated = await updateImageGeneration(imageId, {
+      status: "pending",
+      prompt,
+      errorMessage: null,
+      resultImageUrl: null,
+      metadata: {
+        ...(image.metadata as object),
+        templateId: template.id,
+        templateName: template.name,
+        roomType,
+      },
+    })
+
+    if (!updated) {
+      return { success: false, error: "Failed to update image" }
+    }
+
+    // Trigger processing
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    await updateImageGeneration(imageId, { status: "processing" })
+
+    fetch(`${baseUrl}/api/process-image`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageId }),
+    }).catch((err) => {
+      console.error(`Failed to trigger processing for image ${imageId}:`, err)
+    })
+
+    // Update project counts
+    await updateProjectCounts(image.projectId)
+
+    revalidatePath("/dashboard")
+    revalidatePath(`/dashboard/${image.projectId}`)
+
+    return { success: true, data: updated }
+  } catch (error) {
+    console.error("Failed to regenerate image:", error)
+    return { success: false, error: "Failed to regenerate image" }
   }
 }
 

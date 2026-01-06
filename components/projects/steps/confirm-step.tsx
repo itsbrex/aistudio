@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { IconPhoto, IconSparkles, IconCurrencyDollar } from "@tabler/icons-react"
+import { IconPhoto } from "@tabler/icons-react"
 
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
@@ -15,7 +15,6 @@ interface ConfirmStepProps {
   selectedTemplate: StyleTemplate | null
   projectName: string
   onProjectNameChange: (name: string) => void
-  estimatedCost: number
 }
 
 export function ConfirmStep({
@@ -23,7 +22,6 @@ export function ConfirmStep({
   selectedTemplate,
   projectName,
   onProjectNameChange,
-  estimatedCost,
 }: ConfirmStepProps) {
   return (
     <div className="grid gap-6 sm:grid-cols-2">
@@ -99,40 +97,12 @@ export function ConfirmStep({
           )}
         </div>
 
-        {/* Cost estimate */}
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Estimated Cost</Label>
-          <div className="rounded-lg bg-muted/50 p-4 ring-1 ring-foreground/5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div
-                  className="flex h-8 w-8 items-center justify-center rounded-lg"
-                  style={{
-                    backgroundColor: "color-mix(in oklch, var(--accent-amber) 15%, transparent)",
-                  }}
-                >
-                  <IconCurrencyDollar
-                    className="h-4 w-4"
-                    style={{ color: "var(--accent-amber)" }}
-                  />
-                </div>
-                <span className="text-sm text-muted-foreground">Total</span>
-              </div>
-              <span
-                className="font-mono text-xl font-bold tabular-nums"
-                style={{ color: "var(--accent-amber)" }}
-              >
-                ${estimatedCost.toFixed(2)}
-              </span>
-            </div>
-            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-              <IconSparkles className="h-3 w-3" />
-              <span>
-                {images.length} image{images.length !== 1 ? "s" : ""} × $
-                {selectedTemplate?.estimatedCost.toFixed(3) || "0.039"} per image
-              </span>
-            </div>
-          </div>
+        {/* Summary info */}
+        <div className="rounded-lg bg-muted/50 p-4 ring-1 ring-foreground/5">
+          <p className="text-sm text-muted-foreground">
+            {images.length} image{images.length !== 1 ? "s" : ""} will be transformed using the{" "}
+            <span className="font-medium text-foreground">{selectedTemplate?.name}</span> style.
+          </p>
         </div>
       </div>
     </div>

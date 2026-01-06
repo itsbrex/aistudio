@@ -4,6 +4,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
   IconUpload,
+  IconHome,
   IconPalette,
   IconCheck,
   IconArrowRight,
@@ -24,6 +25,7 @@ import {
 import { useProjectCreation, type CreationStep } from "@/hooks/use-project-creation"
 import { useImageUpload } from "@/hooks/use-image-upload"
 import { UploadStep } from "@/components/projects/steps/upload-step"
+import { RoomTypeStep } from "@/components/projects/steps/room-type-step"
 import { StyleStep } from "@/components/projects/steps/style-step"
 import { ConfirmStep } from "@/components/projects/steps/confirm-step"
 import { createProjectAction } from "@/lib/actions"
@@ -35,6 +37,7 @@ interface NewProjectDialogProps {
 
 const STEPS: { id: CreationStep; label: string; icon: React.ReactNode }[] = [
   { id: "upload", label: "Upload", icon: <IconUpload className="h-4 w-4" /> },
+  { id: "room-type", label: "Room", icon: <IconHome className="h-4 w-4" /> },
   { id: "style", label: "Style", icon: <IconPalette className="h-4 w-4" /> },
   { id: "confirm", label: "Confirm", icon: <IconCheck className="h-4 w-4" /> },
 ]
@@ -113,6 +116,9 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
       const projectFormData = new FormData()
       projectFormData.set("name", creation.projectName)
       projectFormData.set("styleTemplateId", creation.selectedTemplate.id)
+      if (creation.roomType) {
+        projectFormData.set("roomType", creation.roomType)
+      }
 
       const projectResult = await createProjectAction(projectFormData)
 
@@ -148,6 +154,10 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
     upload: {
       title: "Upload Images",
       description: "Add the real estate photos you want to enhance",
+    },
+    "room-type": {
+      title: "Select Room Type",
+      description: "Help the AI understand what kind of space this is",
     },
     style: {
       title: "Choose Style",
@@ -186,6 +196,12 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
               onRemoveImage={creation.removeImage}
             />
           )}
+          {creation.step === "room-type" && (
+            <RoomTypeStep
+              selectedRoomType={creation.roomType}
+              onSelectRoomType={creation.setRoomType}
+            />
+          )}
           {creation.step === "style" && (
             <StyleStep
               selectedTemplate={creation.selectedTemplate}
@@ -198,7 +214,6 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
               selectedTemplate={creation.selectedTemplate}
               projectName={creation.projectName}
               onProjectNameChange={creation.setProjectName}
-              estimatedCost={creation.estimatedCost}
             />
           )}
         </div>

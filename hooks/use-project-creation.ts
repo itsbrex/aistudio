@@ -10,11 +10,12 @@ export interface UploadedImage {
   name: string
 }
 
-export type CreationStep = "upload" | "style" | "confirm"
+export type CreationStep = "upload" | "room-type" | "style" | "confirm"
 
 export interface ProjectCreationState {
   step: CreationStep
   images: UploadedImage[]
+  roomType: string | null
   selectedTemplate: StyleTemplate | null
   projectName: string
   isSubmitting: boolean
@@ -23,6 +24,7 @@ export interface ProjectCreationState {
 const INITIAL_STATE: ProjectCreationState = {
   step: "upload",
   images: [],
+  roomType: null,
   selectedTemplate: null,
   projectName: "",
   isSubmitting: false,
@@ -62,6 +64,10 @@ export function useProjectCreation() {
     })
   }, [])
 
+  const setRoomType = useCallback((roomType: string | null) => {
+    setState((prev) => ({ ...prev, roomType }))
+  }, [])
+
   const setSelectedTemplate = useCallback((template: StyleTemplate | null) => {
     setState((prev) => ({ ...prev, selectedTemplate: template }))
   }, [])
@@ -84,6 +90,8 @@ export function useProjectCreation() {
     switch (state.step) {
       case "upload":
         return state.images.length > 0
+      case "room-type":
+        return state.roomType !== null
       case "style":
         return state.selectedTemplate !== null
       case "confirm":
@@ -91,7 +99,7 @@ export function useProjectCreation() {
       default:
         return false
     }
-  }, [state.step, state.images.length, state.selectedTemplate, state.projectName])
+  }, [state.step, state.images.length, state.roomType, state.selectedTemplate, state.projectName])
 
   const goToNextStep = useCallback(() => {
     if (!canProceed()) return
@@ -99,6 +107,8 @@ export function useProjectCreation() {
     setState((prev) => {
       switch (prev.step) {
         case "upload":
+          return { ...prev, step: "room-type" }
+        case "room-type":
           return { ...prev, step: "style" }
         case "style":
           return { ...prev, step: "confirm" }
@@ -111,8 +121,10 @@ export function useProjectCreation() {
   const goToPreviousStep = useCallback(() => {
     setState((prev) => {
       switch (prev.step) {
-        case "style":
+        case "room-type":
           return { ...prev, step: "upload" }
+        case "style":
+          return { ...prev, step: "room-type" }
         case "confirm":
           return { ...prev, step: "style" }
         default:
@@ -121,15 +133,12 @@ export function useProjectCreation() {
     })
   }, [])
 
-  const estimatedCost = state.selectedTemplate
-    ? state.images.length * state.selectedTemplate.estimatedCost
-    : 0
-
   return {
     ...state,
     setStep,
     addImages,
     removeImage,
+    setRoomType,
     setSelectedTemplate,
     setProjectName,
     setIsSubmitting,
@@ -137,7 +146,6 @@ export function useProjectCreation() {
     canProceed,
     goToNextStep,
     goToPreviousStep,
-    estimatedCost,
   }
 }
 
