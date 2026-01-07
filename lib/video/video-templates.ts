@@ -24,7 +24,7 @@ export const VIDEO_TEMPLATES = [
     id: "classic-tour",
     name: "Classic Home Tour",
     description: "A comprehensive walkthrough perfect for most residential properties.",
-    thumbnailUrl: "https://images.unsplash.com/photo-1600596542815-22b5c1221b8a?w=800&q=80", // Placeholder
+    thumbnailUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80",
     previewVideoUrl: "https://cdn.coverr.co/videos/coverr-interior-design-living-room-2646/1080p.mp4", // Placeholder
     estimatedDuration: 35,
     slots: [
