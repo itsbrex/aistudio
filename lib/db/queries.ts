@@ -1,4 +1,4 @@
-import { eq, desc, count, and, sum, gt, max, or, ilike, asc, sql, countDistinct } from "drizzle-orm";
+import { eq, desc, count, and, sum, gt, max, or, sql } from "drizzle-orm";
 import { db } from "./index";
 import {
   user,
@@ -977,6 +977,24 @@ export async function getVideoProjectStats(workspaceId: string): Promise<{
 // Admin Queries (System Admin Only)
 // ============================================================================
 
+interface AdminWorkspaceQueryRow {
+  [key: string]: unknown;
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  plan: string;
+  created_at: Date;
+  updated_at: Date;
+  owner_id: string | null;
+  owner_name: string | null;
+  owner_email: string | null;
+  owner_image: string | null;
+  member_count: string;
+  images_generated: string;
+  last_activity_at: Date;
+}
+
 export async function getAdminWorkspaces(options: {
   cursor?: string | null;
   limit?: number;
@@ -988,46 +1006,23 @@ export async function getAdminWorkspaces(options: {
 }> {
   const { cursor, limit = 20, filters, sort } = options;
 
-  // Build WHERE conditions
-  const conditions: ReturnType<typeof eq>[] = [];
-
+  // Get total count (for status/plan filters only, not cursor)
+  const countConditions: ReturnType<typeof eq>[] = [];
   if (filters?.status) {
-    conditions.push(eq(workspace.status, filters.status));
+    countConditions.push(eq(workspace.status, filters.status));
   }
-
   if (filters?.plan) {
-    conditions.push(eq(workspace.plan, filters.plan));
+    countConditions.push(eq(workspace.plan, filters.plan));
   }
 
-  if (cursor) {
-    conditions.push(gt(workspace.id, cursor));
-  }
-
-  // Get total count (without cursor)
-  const totalConditions = conditions.filter((c) => c !== gt(workspace.id, cursor));
   const [totalResult] = await db
     .select({ count: count() })
     .from(workspace)
-    .where(totalConditions.length > 0 ? and(...totalConditions) : undefined);
+    .where(countConditions.length > 0 ? and(...countConditions) : undefined);
 
   // Build the main query with raw SQL for complex aggregations
   // We need to join user (for owner), count members, and sum images
-  const workspacesQuery = await db.execute<{
-    id: string;
-    name: string;
-    slug: string;
-    status: string;
-    plan: string;
-    created_at: Date;
-    updated_at: Date;
-    owner_id: string | null;
-    owner_name: string | null;
-    owner_email: string | null;
-    owner_image: string | null;
-    member_count: string;
-    images_generated: string;
-    last_activity_at: Date;
-  }>(sql`
+  const workspacesResult = await db.execute<AdminWorkspaceQueryRow>(sql`
     SELECT
       w.id,
       w.name,
@@ -1085,7 +1080,8 @@ export async function getAdminWorkspaces(options: {
     LIMIT ${limit + 1}
   `);
 
-  const rows = workspacesQuery.rows;
+  // postgres-js returns the result directly as an array
+  const rows = workspacesResult as unknown as AdminWorkspaceQueryRow[];
   const hasMore = rows.length > limit;
   const data = rows.slice(0, limit);
 
