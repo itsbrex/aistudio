@@ -10,6 +10,7 @@ import {
   IconBuilding,
   IconUsers,
   IconFileInvoice,
+  IconPercentage,
   IconLogout,
 } from "@tabler/icons-react";
 
@@ -36,6 +37,12 @@ const navItems = [
     href: "/admin/billing",
     label: "Betalinger",
     icon: IconFileInvoice,
+    exact: false as const,
+  },
+  {
+    href: "/admin/affiliates",
+    label: "Affiliates",
+    icon: IconPercentage,
     exact: false as const,
   },
 ];

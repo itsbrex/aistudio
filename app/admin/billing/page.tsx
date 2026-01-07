@@ -6,25 +6,18 @@ import {
   getBillingStats,
   getUninvoicedLineItems,
   getInvoiceHistory,
-  getAffiliateRelationships,
-  getAffiliateEarnings,
-  getAffiliateStats,
 } from "@/lib/db/queries";
 
 export default async function AdminBillingPage() {
   // Ensure user is system admin
   await requireSystemAdmin();
 
-  // Fetch all billing data in parallel
-  const [stats, uninvoicedItems, invoices, affiliateRelationships, affiliateEarnings, affiliateStats] =
-    await Promise.all([
-      getBillingStats(),
-      getUninvoicedLineItems(),
-      getInvoiceHistory(),
-      getAffiliateRelationships(),
-      getAffiliateEarnings(),
-      getAffiliateStats(),
-    ]);
+  // Fetch billing data in parallel
+  const [stats, uninvoicedItems, invoices] = await Promise.all([
+    getBillingStats(),
+    getUninvoicedLineItems(),
+    getInvoiceHistory(),
+  ]);
 
   // Transform stats for the stats bar component (convert ore to NOK)
   const formattedStats = {
@@ -63,15 +56,9 @@ export default async function AdminBillingPage() {
         <BillingStatsBar stats={formattedStats} />
       </div>
 
-      {/* Tabs: Uninvoiced / History / Affiliates */}
+      {/* Tabs: Uninvoiced / History */}
       <div className="animate-fade-in-up stagger-2">
-        <BillingTabs
-          uninvoicedItems={uninvoicedItems}
-          invoices={invoices}
-          affiliateRelationships={affiliateRelationships}
-          affiliateEarnings={affiliateEarnings}
-          affiliateStats={affiliateStats}
-        />
+        <BillingTabs uninvoicedItems={uninvoicedItems} invoices={invoices} />
       </div>
     </div>
   );
