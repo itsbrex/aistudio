@@ -1,4 +1,4 @@
-import { eq, desc, count, and, sum, gt, max, or, sql } from "drizzle-orm";
+import { eq, desc, count, and, sum, gt, max, or, sql, inArray } from "drizzle-orm";
 import { db } from "./index";
 import {
   user,
@@ -8,6 +8,11 @@ import {
   videoProject,
   videoClip,
   musicTrack,
+  workspacePricing,
+  invoice,
+  invoiceLineItem,
+  affiliateRelationship,
+  affiliateEarning,
   type User,
   type Workspace,
   type Project,
@@ -19,8 +24,17 @@ import {
   type VideoProjectStatus,
   type WorkspaceStatus,
   type WorkspacePlan,
+  type WorkspacePricing,
+  type Invoice,
+  type InvoiceLineItem,
+  type InvoiceStatus,
+  type LineItemStatus,
+  type AffiliateRelationship,
+  type AffiliateEarning,
+  type AffiliateEarningStatus,
   NewVideoClip,
 } from "./schema";
+import { BILLING_DEFAULTS } from "@/lib/fiken-client";
 import type {
   AdminWorkspaceRow,
   AdminWorkspaceFilters,
@@ -391,6 +405,19 @@ export async function deleteProject(id: string): Promise<void> {
 }
 
 export async function updateProjectCounts(projectId: string): Promise<void> {
+  // Get current project state to check if this is the first completed image
+  const [currentProject] = await db
+    .select({
+      completedCount: project.completedCount,
+      workspaceId: project.workspaceId,
+      name: project.name,
+    })
+    .from(project)
+    .where(eq(project.id, projectId))
+    .limit(1);
+
+  const previousCompletedCount = currentProject?.completedCount ?? 0;
+
   // Count total images for the project
   const [totalResult] = await db
     .select({ count: count() })
@@ -460,6 +487,32 @@ export async function updateProjectCounts(projectId: string): Promise<void> {
       updatedAt: new Date(),
     })
     .where(eq(project.id, projectId));
+
+  // Create invoice line item if this is the first completed image
+  // This triggers billing when a project gets its first successful generation
+  if (previousCompletedCount === 0 && completedCount > 0 && currentProject) {
+    try {
+      // Check if invoice line item already exists for this project
+      const existingLineItem = await db
+        .select({ id: invoiceLineItem.id })
+        .from(invoiceLineItem)
+        .where(eq(invoiceLineItem.projectId, projectId))
+        .limit(1);
+
+      if (!existingLineItem[0]) {
+        const pricing = await getWorkspacePricing(currentProject.workspaceId);
+        await createInvoiceLineItem({
+          workspaceId: currentProject.workspaceId,
+          projectId,
+          description: `AI Photo Editing - ${currentProject.name}`,
+          amountOre: pricing.imageProjectPriceOre,
+        });
+      }
+    } catch (error) {
+      // Log but don't fail the project update if billing fails
+      console.error("[updateProjectCounts] Failed to create invoice line item:", error);
+    }
+  }
 }
 
 // Get images for a project
@@ -1693,5 +1746,607 @@ export async function getAdminUserDetail(
     },
     recentProjects: recentProjectsData,
     recentVideos: recentVideosData,
+  };
+}
+
+// ============================================================================
+// Billing Queries - Workspace Pricing
+// ============================================================================
+
+export async function getWorkspacePricing(
+  workspaceId: string
+): Promise<{ imageProjectPriceOre: number; videoProjectPriceOre: number; fikenContactId: number | null }> {
+  const result = await db
+    .select()
+    .from(workspacePricing)
+    .where(eq(workspacePricing.workspaceId, workspaceId))
+    .limit(1);
+
+  const pricing = result[0];
+  return {
+    imageProjectPriceOre: pricing?.imageProjectPriceOre ?? BILLING_DEFAULTS.IMAGE_PROJECT_PRICE_ORE,
+    videoProjectPriceOre: pricing?.videoProjectPriceOre ?? BILLING_DEFAULTS.VIDEO_PROJECT_PRICE_ORE,
+    fikenContactId: pricing?.fikenContactId ?? null,
+  };
+}
+
+export async function upsertWorkspacePricing(
+  workspaceId: string,
+  data: Partial<{
+    imageProjectPriceOre: number | null;
+    videoProjectPriceOre: number | null;
+    fikenContactId: number | null;
+  }>
+): Promise<WorkspacePricing> {
+  const existing = await db
+    .select()
+    .from(workspacePricing)
+    .where(eq(workspacePricing.workspaceId, workspaceId))
+    .limit(1);
+
+  if (existing[0]) {
+    const [updated] = await db
+      .update(workspacePricing)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(workspacePricing.workspaceId, workspaceId))
+      .returning();
+    return updated;
+  }
+
+  const [created] = await db
+    .insert(workspacePricing)
+    .values({
+      id: crypto.randomUUID(),
+      workspaceId,
+      ...data,
+    })
+    .returning();
+  return created;
+}
+
+// ============================================================================
+// Billing Queries - Invoice Line Items
+// ============================================================================
+
+export interface UninvoicedLineItemRow {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspaceOrgNumber: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  videoProjectId: string | null;
+  videoProjectName: string | null;
+  description: string;
+  amountOre: number;
+  quantity: number;
+  createdAt: Date;
+}
+
+export async function getUninvoicedLineItems(filters?: {
+  workspaceId?: string;
+}): Promise<UninvoicedLineItemRow[]> {
+  const conditions = [eq(invoiceLineItem.status, "pending")];
+
+  if (filters?.workspaceId) {
+    conditions.push(eq(invoiceLineItem.workspaceId, filters.workspaceId));
+  }
+
+  const results = await db
+    .select({
+      id: invoiceLineItem.id,
+      workspaceId: invoiceLineItem.workspaceId,
+      workspaceName: workspace.name,
+      workspaceOrgNumber: workspace.organizationNumber,
+      projectId: invoiceLineItem.projectId,
+      projectName: project.name,
+      videoProjectId: invoiceLineItem.videoProjectId,
+      videoProjectName: videoProject.name,
+      description: invoiceLineItem.description,
+      amountOre: invoiceLineItem.amountOre,
+      quantity: invoiceLineItem.quantity,
+      createdAt: invoiceLineItem.createdAt,
+    })
+    .from(invoiceLineItem)
+    .leftJoin(workspace, eq(invoiceLineItem.workspaceId, workspace.id))
+    .leftJoin(project, eq(invoiceLineItem.projectId, project.id))
+    .leftJoin(videoProject, eq(invoiceLineItem.videoProjectId, videoProject.id))
+    .where(and(...conditions))
+    .orderBy(desc(invoiceLineItem.createdAt));
+
+  return results.map((r) => ({
+    ...r,
+    workspaceName: r.workspaceName ?? "Unknown",
+  }));
+}
+
+export async function createInvoiceLineItem(data: {
+  workspaceId: string;
+  projectId?: string;
+  videoProjectId?: string;
+  description: string;
+  amountOre: number;
+}): Promise<InvoiceLineItem> {
+  const [lineItem] = await db
+    .insert(invoiceLineItem)
+    .values({
+      id: crypto.randomUUID(),
+      workspaceId: data.workspaceId,
+      projectId: data.projectId ?? null,
+      videoProjectId: data.videoProjectId ?? null,
+      description: data.description,
+      amountOre: data.amountOre,
+      quantity: 1,
+      status: "pending",
+    })
+    .returning();
+  return lineItem;
+}
+
+export async function updateInvoiceLineItemStatus(
+  lineItemIds: string[],
+  status: LineItemStatus,
+  invoiceId?: string
+): Promise<void> {
+  await db
+    .update(invoiceLineItem)
+    .set({
+      status,
+      invoiceId: invoiceId ?? null,
+      updatedAt: new Date(),
+    })
+    .where(inArray(invoiceLineItem.id, lineItemIds));
+}
+
+export async function getLineItemsByInvoiceId(
+  invoiceId: string
+): Promise<InvoiceLineItem[]> {
+  return db
+    .select()
+    .from(invoiceLineItem)
+    .where(eq(invoiceLineItem.invoiceId, invoiceId))
+    .orderBy(invoiceLineItem.createdAt);
+}
+
+// ============================================================================
+// Billing Queries - Invoices
+// ============================================================================
+
+export interface InvoiceHistoryRow {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspaceOrgNumber: string | null;
+  fikenInvoiceId: number | null;
+  fikenInvoiceNumber: string | null;
+  totalAmountOre: number;
+  totalAmountWithVatOre: number;
+  status: InvoiceStatus;
+  lineItemCount: number;
+  issueDate: Date | null;
+  dueDate: Date | null;
+  paidAt: Date | null;
+  createdAt: Date;
+}
+
+export async function getInvoiceHistory(filters?: {
+  workspaceId?: string;
+  status?: InvoiceStatus;
+}): Promise<InvoiceHistoryRow[]> {
+  const conditions: ReturnType<typeof eq>[] = [];
+
+  if (filters?.workspaceId) {
+    conditions.push(eq(invoice.workspaceId, filters.workspaceId));
+  }
+  if (filters?.status) {
+    conditions.push(eq(invoice.status, filters.status));
+  }
+
+  const invoices = await db
+    .select({
+      id: invoice.id,
+      workspaceId: invoice.workspaceId,
+      workspaceName: workspace.name,
+      workspaceOrgNumber: workspace.organizationNumber,
+      fikenInvoiceId: invoice.fikenInvoiceId,
+      fikenInvoiceNumber: invoice.fikenInvoiceNumber,
+      totalAmountOre: invoice.totalAmountOre,
+      status: invoice.status,
+      issueDate: invoice.issueDate,
+      dueDate: invoice.dueDate,
+      paidAt: invoice.paidAt,
+      createdAt: invoice.createdAt,
+    })
+    .from(invoice)
+    .leftJoin(workspace, eq(invoice.workspaceId, workspace.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(invoice.createdAt));
+
+  // Get line item counts for each invoice
+  const lineItemCounts = await db
+    .select({
+      invoiceId: invoiceLineItem.invoiceId,
+      count: count(),
+    })
+    .from(invoiceLineItem)
+    .where(
+      inArray(
+        invoiceLineItem.invoiceId,
+        invoices.map((i) => i.id)
+      )
+    )
+    .groupBy(invoiceLineItem.invoiceId);
+
+  const countMap = new Map(lineItemCounts.map((c) => [c.invoiceId, c.count]));
+
+  return invoices.map((inv) => ({
+    ...inv,
+    workspaceName: inv.workspaceName ?? "Unknown",
+    status: inv.status as InvoiceStatus,
+    totalAmountWithVatOre: Math.round(inv.totalAmountOre * (1 + BILLING_DEFAULTS.VAT_RATE)),
+    lineItemCount: countMap.get(inv.id) ?? 0,
+  }));
+}
+
+export async function getInvoiceById(invoiceId: string): Promise<Invoice | null> {
+  const result = await db
+    .select()
+    .from(invoice)
+    .where(eq(invoice.id, invoiceId))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export async function createInvoice(data: {
+  workspaceId: string;
+  totalAmountOre: number;
+  notes?: string;
+}): Promise<Invoice> {
+  const [inv] = await db
+    .insert(invoice)
+    .values({
+      id: crypto.randomUUID(),
+      workspaceId: data.workspaceId,
+      totalAmountOre: data.totalAmountOre,
+      status: "draft",
+      notes: data.notes,
+    })
+    .returning();
+  return inv;
+}
+
+export async function updateInvoice(
+  invoiceId: string,
+  data: Partial<{
+    fikenInvoiceId: number;
+    fikenInvoiceNumber: string;
+    fikenContactId: number;
+    status: InvoiceStatus;
+    issueDate: Date;
+    dueDate: Date;
+    paidAt: Date;
+    notes: string;
+  }>
+): Promise<Invoice | null> {
+  const [updated] = await db
+    .update(invoice)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(invoice.id, invoiceId))
+    .returning();
+  return updated ?? null;
+}
+
+// ============================================================================
+// Billing Queries - Stats
+// ============================================================================
+
+export interface BillingStats {
+  uninvoicedCount: number;
+  uninvoicedAmountOre: number;
+  pendingPaymentCount: number;
+  pendingPaymentAmountOre: number;
+  invoicedThisMonthCount: number;
+  invoicedThisMonthAmountOre: number;
+  totalInvoicedCount: number;
+  totalInvoicedAmountOre: number;
+}
+
+export async function getBillingStats(): Promise<BillingStats> {
+  // Uninvoiced line items
+  const [uninvoiced] = await db
+    .select({
+      count: count(),
+      amount: sum(invoiceLineItem.amountOre),
+    })
+    .from(invoiceLineItem)
+    .where(eq(invoiceLineItem.status, "pending"));
+
+  // Pending payment invoices (sent but not paid)
+  const [pendingPayment] = await db
+    .select({
+      count: count(),
+      amount: sum(invoice.totalAmountOre),
+    })
+    .from(invoice)
+    .where(eq(invoice.status, "sent"));
+
+  // Invoiced this month
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const [thisMonth] = await db
+    .select({
+      count: count(),
+      amount: sum(invoice.totalAmountOre),
+    })
+    .from(invoice)
+    .where(
+      and(
+        gt(invoice.createdAt, startOfMonth),
+        or(eq(invoice.status, "sent"), eq(invoice.status, "paid"))
+      )
+    );
+
+  // Total invoiced (sent + paid)
+  const [total] = await db
+    .select({
+      count: count(),
+      amount: sum(invoice.totalAmountOre),
+    })
+    .from(invoice)
+    .where(or(eq(invoice.status, "sent"), eq(invoice.status, "paid")));
+
+  return {
+    uninvoicedCount: uninvoiced?.count ?? 0,
+    uninvoicedAmountOre: Number(uninvoiced?.amount) || 0,
+    pendingPaymentCount: pendingPayment?.count ?? 0,
+    pendingPaymentAmountOre: Number(pendingPayment?.amount) || 0,
+    invoicedThisMonthCount: thisMonth?.count ?? 0,
+    invoicedThisMonthAmountOre: Number(thisMonth?.amount) || 0,
+    totalInvoicedCount: total?.count ?? 0,
+    totalInvoicedAmountOre: Number(total?.amount) || 0,
+  };
+}
+
+// ============================================================================
+// Affiliate Queries
+// ============================================================================
+
+export interface AffiliateRelationshipRow {
+  id: string;
+  affiliateWorkspaceId: string;
+  affiliateWorkspaceName: string;
+  referredWorkspaceId: string;
+  referredWorkspaceName: string;
+  commissionPercent: number;
+  isActive: boolean;
+  notes: string | null;
+  createdAt: Date;
+}
+
+export async function getAffiliateRelationships(): Promise<AffiliateRelationshipRow[]> {
+  const results = await db
+    .select({
+      id: affiliateRelationship.id,
+      affiliateWorkspaceId: affiliateRelationship.affiliateWorkspaceId,
+      affiliateWorkspaceName: sql<string>`(SELECT name FROM workspace WHERE id = ${affiliateRelationship.affiliateWorkspaceId})`,
+      referredWorkspaceId: affiliateRelationship.referredWorkspaceId,
+      referredWorkspaceName: sql<string>`(SELECT name FROM workspace WHERE id = ${affiliateRelationship.referredWorkspaceId})`,
+      commissionPercent: affiliateRelationship.commissionPercent,
+      isActive: affiliateRelationship.isActive,
+      notes: affiliateRelationship.notes,
+      createdAt: affiliateRelationship.createdAt,
+    })
+    .from(affiliateRelationship)
+    .orderBy(desc(affiliateRelationship.createdAt));
+
+  return results.map((r) => ({
+    ...r,
+    affiliateWorkspaceName: r.affiliateWorkspaceName ?? "Unknown",
+    referredWorkspaceName: r.referredWorkspaceName ?? "Unknown",
+  }));
+}
+
+export async function getAffiliateRelationshipByReferred(
+  referredWorkspaceId: string
+): Promise<AffiliateRelationship | null> {
+  const result = await db
+    .select()
+    .from(affiliateRelationship)
+    .where(
+      and(
+        eq(affiliateRelationship.referredWorkspaceId, referredWorkspaceId),
+        eq(affiliateRelationship.isActive, true)
+      )
+    )
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export async function createAffiliateRelationship(data: {
+  affiliateWorkspaceId: string;
+  referredWorkspaceId: string;
+  commissionPercent: number;
+  notes?: string;
+}): Promise<AffiliateRelationship> {
+  const [relationship] = await db
+    .insert(affiliateRelationship)
+    .values({
+      id: crypto.randomUUID(),
+      affiliateWorkspaceId: data.affiliateWorkspaceId,
+      referredWorkspaceId: data.referredWorkspaceId,
+      commissionPercent: data.commissionPercent,
+      notes: data.notes ?? null,
+      isActive: true,
+    })
+    .returning();
+  return relationship;
+}
+
+export async function updateAffiliateRelationship(
+  relationshipId: string,
+  data: Partial<{
+    commissionPercent: number;
+    isActive: boolean;
+    notes: string | null;
+  }>
+): Promise<AffiliateRelationship | null> {
+  const [updated] = await db
+    .update(affiliateRelationship)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(affiliateRelationship.id, relationshipId))
+    .returning();
+  return updated ?? null;
+}
+
+export async function deleteAffiliateRelationship(
+  relationshipId: string
+): Promise<void> {
+  await db
+    .delete(affiliateRelationship)
+    .where(eq(affiliateRelationship.id, relationshipId));
+}
+
+// ============================================================================
+// Affiliate Earnings Queries
+// ============================================================================
+
+export interface AffiliateEarningRow {
+  id: string;
+  affiliateWorkspaceId: string;
+  affiliateWorkspaceName: string;
+  invoiceId: string;
+  invoiceNumber: string | null;
+  referredWorkspaceName: string;
+  invoiceAmountOre: number;
+  commissionPercent: number;
+  earningAmountOre: number;
+  status: AffiliateEarningStatus;
+  paidOutAt: Date | null;
+  paidOutReference: string | null;
+  createdAt: Date;
+}
+
+export async function getAffiliateEarnings(filters?: {
+  affiliateWorkspaceId?: string;
+  status?: AffiliateEarningStatus;
+}): Promise<AffiliateEarningRow[]> {
+  const conditions: ReturnType<typeof eq>[] = [];
+
+  if (filters?.affiliateWorkspaceId) {
+    conditions.push(eq(affiliateEarning.affiliateWorkspaceId, filters.affiliateWorkspaceId));
+  }
+  if (filters?.status) {
+    conditions.push(eq(affiliateEarning.status, filters.status));
+  }
+
+  const results = await db
+    .select({
+      id: affiliateEarning.id,
+      affiliateWorkspaceId: affiliateEarning.affiliateWorkspaceId,
+      affiliateWorkspaceName: sql<string>`(SELECT name FROM workspace WHERE id = ${affiliateEarning.affiliateWorkspaceId})`,
+      invoiceId: affiliateEarning.invoiceId,
+      invoiceNumber: invoice.fikenInvoiceNumber,
+      referredWorkspaceName: sql<string>`(SELECT name FROM workspace WHERE id = ${invoice.workspaceId})`,
+      invoiceAmountOre: affiliateEarning.invoiceAmountOre,
+      commissionPercent: affiliateEarning.commissionPercent,
+      earningAmountOre: affiliateEarning.earningAmountOre,
+      status: affiliateEarning.status,
+      paidOutAt: affiliateEarning.paidOutAt,
+      paidOutReference: affiliateEarning.paidOutReference,
+      createdAt: affiliateEarning.createdAt,
+    })
+    .from(affiliateEarning)
+    .leftJoin(invoice, eq(affiliateEarning.invoiceId, invoice.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(affiliateEarning.createdAt));
+
+  return results.map((r) => ({
+    ...r,
+    affiliateWorkspaceName: r.affiliateWorkspaceName ?? "Unknown",
+    referredWorkspaceName: r.referredWorkspaceName ?? "Unknown",
+    status: r.status as AffiliateEarningStatus,
+  }));
+}
+
+export async function createAffiliateEarning(data: {
+  affiliateWorkspaceId: string;
+  affiliateRelationshipId: string;
+  invoiceId: string;
+  invoiceAmountOre: number;
+  commissionPercent: number;
+}): Promise<AffiliateEarning> {
+  const earningAmountOre = Math.round(
+    (data.invoiceAmountOre * data.commissionPercent) / 100
+  );
+
+  const [earning] = await db
+    .insert(affiliateEarning)
+    .values({
+      id: crypto.randomUUID(),
+      affiliateWorkspaceId: data.affiliateWorkspaceId,
+      affiliateRelationshipId: data.affiliateRelationshipId,
+      invoiceId: data.invoiceId,
+      invoiceAmountOre: data.invoiceAmountOre,
+      commissionPercent: data.commissionPercent,
+      earningAmountOre,
+      status: "pending",
+    })
+    .returning();
+  return earning;
+}
+
+export async function markEarningsAsPaidOut(
+  earningIds: string[],
+  reference: string
+): Promise<void> {
+  await db
+    .update(affiliateEarning)
+    .set({
+      status: "paid_out",
+      paidOutAt: new Date(),
+      paidOutReference: reference,
+      updatedAt: new Date(),
+    })
+    .where(inArray(affiliateEarning.id, earningIds));
+}
+
+export interface AffiliateStats {
+  totalPendingEarningsOre: number;
+  totalPaidOutEarningsOre: number;
+  activeAffiliatesCount: number;
+  pendingPayoutsCount: number;
+}
+
+export async function getAffiliateStats(): Promise<AffiliateStats> {
+  // Pending earnings
+  const [pending] = await db
+    .select({
+      total: sum(affiliateEarning.earningAmountOre),
+      count: count(),
+    })
+    .from(affiliateEarning)
+    .where(eq(affiliateEarning.status, "pending"));
+
+  // Paid out earnings
+  const [paidOut] = await db
+    .select({
+      total: sum(affiliateEarning.earningAmountOre),
+    })
+    .from(affiliateEarning)
+    .where(eq(affiliateEarning.status, "paid_out"));
+
+  // Active affiliates
+  const [activeAffiliates] = await db
+    .select({ count: count() })
+    .from(affiliateRelationship)
+    .where(eq(affiliateRelationship.isActive, true));
+
+  return {
+    totalPendingEarningsOre: Number(pending?.total) || 0,
+    totalPaidOutEarningsOre: Number(paidOut?.total) || 0,
+    activeAffiliatesCount: activeAffiliates?.count ?? 0,
+    pendingPayoutsCount: pending?.count ?? 0,
   };
 }

@@ -454,10 +454,38 @@ export type MusicCategory = "modern" | "classical" | "upbeat" | "calm" | "cinema
 export type VideoRoomType = RoomType; // Unified with RoomType for consistency
 
 // ============================================================================
-// BILLING SCHEMA (TODO: Uncomment when ready to implement)
+// BILLING SCHEMA
 // ============================================================================
 
-/*
+/**
+ * Workspace Pricing - Custom pricing per workspace
+ * If null, defaults to BILLING_DEFAULTS in fiken-client.ts (1000 NOK)
+ */
+export const workspacePricing = pgTable(
+  "workspace_pricing",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .unique()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+
+    // Custom pricing (null = use defaults: 100000 ore = 1000 NOK)
+    imageProjectPriceOre: integer("image_project_price_ore"), // in ore (100000 = 1000 NOK)
+    videoProjectPriceOre: integer("video_project_price_ore"), // in ore
+
+    // Cached Fiken contact ID for faster invoice creation
+    fikenContactId: integer("fiken_contact_id"),
+
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [index("workspace_pricing_workspace_idx").on(table.workspaceId)]
+);
+
+/**
+ * Invoice - Groups invoice line items for billing
+ */
 export const invoice = pgTable(
   "invoice",
   {
@@ -466,24 +494,25 @@ export const invoice = pgTable(
       .notNull()
       .references(() => workspace.id, { onDelete: "cascade" }),
 
-    // Fiken reference
+    // Fiken integration
     fikenInvoiceId: integer("fiken_invoice_id"),
     fikenInvoiceNumber: text("fiken_invoice_number"),
+    fikenContactId: integer("fiken_contact_id"),
 
-    // Invoice details
-    amount: integer("amount").notNull(), // Amount in øre (Norwegian cents)
+    // Invoice totals
+    totalAmountOre: integer("total_amount_ore").notNull(), // Sum of line items in ore
     currency: text("currency").notNull().default("NOK"),
 
-    // Status: pending | sent | paid | cancelled
-    status: text("status").notNull().default("pending"),
+    // Status: draft | sent | paid | cancelled | overdue
+    status: text("status").notNull().default("draft"),
 
     // Dates
-    issueDate: timestamp("issue_date").notNull(),
-    dueDate: timestamp("due_date").notNull(),
+    issueDate: timestamp("issue_date"),
+    dueDate: timestamp("due_date"),
+    paidAt: timestamp("paid_at"),
 
-    // Metadata
-    description: text("description"),
-    projectIds: jsonb("project_ids").$type<string[]>(), // Array of project IDs included
+    // Notes
+    notes: text("notes"),
 
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -495,7 +524,150 @@ export const invoice = pgTable(
   ]
 );
 
+/**
+ * Invoice Line Item - Individual billable items (projects/videos)
+ * Created when a project is started, linked to invoice when billed
+ */
+export const invoiceLineItem = pgTable(
+  "invoice_line_item",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+
+    // Reference to billable item (one of these should be set)
+    projectId: text("project_id").references(() => project.id, {
+      onDelete: "set null",
+    }),
+    videoProjectId: text("video_project_id").references(() => videoProject.id, {
+      onDelete: "set null",
+    }),
+
+    // Line item details
+    description: text("description").notNull(),
+    amountOre: integer("amount_ore").notNull(), // Amount in ore
+    quantity: integer("quantity").notNull().default(1),
+
+    // Status: pending (awaiting invoice) | invoiced (included in invoice) | cancelled
+    status: text("status").notNull().default("pending"),
+
+    // Link to invoice when included
+    invoiceId: text("invoice_id").references(() => invoice.id, {
+      onDelete: "set null",
+    }),
+
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("invoice_line_item_workspace_idx").on(table.workspaceId),
+    index("invoice_line_item_status_idx").on(table.status),
+    index("invoice_line_item_invoice_idx").on(table.invoiceId),
+    index("invoice_line_item_project_idx").on(table.projectId),
+    index("invoice_line_item_video_idx").on(table.videoProjectId),
+  ]
+);
+
+// ============================================================================
+// AFFILIATE SCHEMA
+// ============================================================================
+
+/**
+ * Affiliate Relationship - Links affiliate workspace to referred workspace
+ * Manual assignment by admin with flexible commission percentage
+ */
+export const affiliateRelationship = pgTable(
+  "affiliate_relationship",
+  {
+    id: text("id").primaryKey(),
+
+    // The affiliate (earns commission)
+    affiliateWorkspaceId: text("affiliate_workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+
+    // The referred workspace (generates revenue for affiliate)
+    referredWorkspaceId: text("referred_workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+
+    // Commission percentage (e.g., 20 = 20%, 50 = 50%)
+    commissionPercent: integer("commission_percent").notNull().default(20),
+
+    // Active status (can be deactivated without deleting)
+    isActive: boolean("is_active").notNull().default(true),
+
+    // Notes for admin
+    notes: text("notes"),
+
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("affiliate_relationship_affiliate_idx").on(table.affiliateWorkspaceId),
+    index("affiliate_relationship_referred_idx").on(table.referredWorkspaceId),
+  ]
+);
+
+/**
+ * Affiliate Earning - Commission earned when referred workspace invoice is paid
+ */
+export const affiliateEarning = pgTable(
+  "affiliate_earning",
+  {
+    id: text("id").primaryKey(),
+
+    // The affiliate earning this commission
+    affiliateWorkspaceId: text("affiliate_workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+
+    // Link to the relationship
+    affiliateRelationshipId: text("affiliate_relationship_id")
+      .notNull()
+      .references(() => affiliateRelationship.id, { onDelete: "cascade" }),
+
+    // The invoice that generated this earning
+    invoiceId: text("invoice_id")
+      .notNull()
+      .references(() => invoice.id, { onDelete: "cascade" }),
+
+    // Earning details
+    invoiceAmountOre: integer("invoice_amount_ore").notNull(), // Original invoice amount
+    commissionPercent: integer("commission_percent").notNull(), // Snapshot of % at time of earning
+    earningAmountOre: integer("earning_amount_ore").notNull(), // Calculated commission
+
+    // Payout status: pending | paid_out
+    status: text("status").notNull().default("pending"),
+    paidOutAt: timestamp("paid_out_at"),
+    paidOutReference: text("paid_out_reference"), // Bank transfer ref, invoice ref, etc.
+
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("affiliate_earning_affiliate_idx").on(table.affiliateWorkspaceId),
+    index("affiliate_earning_invoice_idx").on(table.invoiceId),
+    index("affiliate_earning_status_idx").on(table.status),
+  ]
+);
+
+// Billing type exports
+export type WorkspacePricing = typeof workspacePricing.$inferSelect;
+export type NewWorkspacePricing = typeof workspacePricing.$inferInsert;
+
 export type Invoice = typeof invoice.$inferSelect;
 export type NewInvoice = typeof invoice.$inferInsert;
-export type InvoiceStatus = "pending" | "sent" | "paid" | "cancelled";
-*/
+export type InvoiceStatus = "draft" | "sent" | "paid" | "cancelled" | "overdue";
+
+export type InvoiceLineItem = typeof invoiceLineItem.$inferSelect;
+export type NewInvoiceLineItem = typeof invoiceLineItem.$inferInsert;
+export type LineItemStatus = "pending" | "invoiced" | "cancelled";
+
+export type AffiliateRelationship = typeof affiliateRelationship.$inferSelect;
+export type NewAffiliateRelationship = typeof affiliateRelationship.$inferInsert;
+
+export type AffiliateEarning = typeof affiliateEarning.$inferSelect;
+export type NewAffiliateEarning = typeof affiliateEarning.$inferInsert;
+export type AffiliateEarningStatus = "pending" | "paid_out";

@@ -63,6 +63,18 @@ export const FIKEN_CONFIG = {
   defaultDueDays: 14,
 } as const;
 
+/**
+ * Default billing prices (in øre - Norwegian cents)
+ * These are used when workspace doesn't have custom pricing set
+ */
+export const BILLING_DEFAULTS = {
+  IMAGE_PROJECT_PRICE_ORE: 100000, // 1000 NOK
+  VIDEO_PROJECT_PRICE_ORE: 100000, // 1000 NOK
+  VAT_RATE: 0.25, // 25% Norwegian VAT
+  DEFAULT_AFFILIATE_COMMISSION: 20, // 20%
+  DUE_DAYS: 14, // Payment due in 14 days
+} as const;
+
 // =============================================================================
 // Client
 // =============================================================================

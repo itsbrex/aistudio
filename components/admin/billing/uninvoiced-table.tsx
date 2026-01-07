@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   IconSend,
   IconFileInvoice,
   IconPhoto,
   IconBuilding,
   IconLoader2,
+  IconAlertTriangle,
+  IconVideo,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -27,32 +30,51 @@ import {
   AlertAction,
 } from "@/components/ui/alert";
 import {
-  getUninvoicedProjects,
-  getUninvoicedByWorkspace,
-  formatNOK,
-  type UninvoicedProject,
-} from "@/lib/mock/admin-billing";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  createInvoiceFromLineItemsAction,
+  sendInvoiceToFikenAction,
+} from "@/lib/actions/billing";
+import type { UninvoicedLineItemRow } from "@/lib/db/queries";
 
-export function UninvoicedTable() {
-  const projects = useMemo(() => getUninvoicedProjects(), []);
-  const byWorkspace = useMemo(() => getUninvoicedByWorkspace(), []);
+// Format Norwegian currency
+function formatNOK(amountOre: number): string {
+  const nok = amountOre / 100;
+  return new Intl.NumberFormat("nb-NO", {
+    style: "currency",
+    currency: "NOK",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(nok);
+}
+
+interface UninvoicedTableProps {
+  items: UninvoicedLineItemRow[];
+}
+
+export function UninvoicedTable({ items }: UninvoicedTableProps) {
+  const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [sendingSingleId, setSendingSingleId] = useState<string | null>(null);
 
   const allSelected =
-    projects.length > 0 && selectedIds.size === projects.length;
+    items.length > 0 && selectedIds.size === items.length;
   const someSelected = selectedIds.size > 0 && !allSelected;
 
   const toggleAll = () => {
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(projects.map((p) => p.id)));
+      setSelectedIds(new Set(items.map((p) => p.id)));
     }
   };
 
-  const toggleProject = (id: string) => {
+  const toggleItem = (id: string) => {
     const newSet = new Set(selectedIds);
     if (newSet.has(id)) {
       newSet.delete(id);
@@ -62,74 +84,138 @@ export function UninvoicedTable() {
     setSelectedIds(newSet);
   };
 
-  // Group selected projects by workspace
+  // Group selected items by workspace
   const selectedByWorkspace = useMemo(() => {
     const grouped = new Map<
       string,
       {
         workspaceName: string;
-        orgNumber: string;
-        projects: UninvoicedProject[];
+        orgNumber: string | null;
+        items: UninvoicedLineItemRow[];
       }
     >();
 
-    projects
+    items
       .filter((p) => selectedIds.has(p.id))
       .forEach((p) => {
         const existing = grouped.get(p.workspaceId);
         if (existing) {
-          existing.projects.push(p);
+          existing.items.push(p);
         } else {
           grouped.set(p.workspaceId, {
             workspaceName: p.workspaceName,
             orgNumber: p.workspaceOrgNumber,
-            projects: [p],
+            items: [p],
           });
         }
       });
 
     return grouped;
-  }, [projects, selectedIds]);
+  }, [items, selectedIds]);
+
+  // Check if any selected workspace is missing org number
+  const hasMissingOrgNumber = useMemo(() => {
+    for (const ws of selectedByWorkspace.values()) {
+      if (!ws.orgNumber) return true;
+    }
+    return false;
+  }, [selectedByWorkspace]);
 
   const selectedTotal = useMemo(() => {
-    return projects
+    return items
       .filter((p) => selectedIds.has(p.id))
-      .reduce((sum, p) => sum + p.amount, 0);
-  }, [projects, selectedIds]);
+      .reduce((sum, p) => sum + p.amountOre, 0);
+  }, [items, selectedIds]);
 
   const handleSendInvoices = async () => {
+    if (hasMissingOrgNumber) {
+      toast.error("Mangler org.nr", {
+        description: "En eller flere kunder mangler organisasjonsnummer",
+      });
+      return;
+    }
+
     setIsSendingBatch(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      // Create invoices from selected line items
+      const result = await createInvoiceFromLineItemsAction(
+        Array.from(selectedIds)
+      );
 
-    // For now, just log what would be sent
-    console.log("Sending invoices for:", selectedByWorkspace);
+      if (!result.success) {
+        toast.error("Feil", { description: result.error });
+        return;
+      }
 
-    toast.success("Fakturaer sendt", {
-      description: `${selectedIds.size} faktura(er) til ${selectedByWorkspace.size} kunde(r) for totalt ${formatNOK(selectedTotal)}`,
-    });
+      // Send each invoice to Fiken
+      let sentCount = 0;
+      for (const invoiceId of result.data.invoiceIds) {
+        const sendResult = await sendInvoiceToFikenAction(invoiceId);
+        if (sendResult.success) {
+          sentCount++;
+        }
+      }
 
-    setSelectedIds(new Set());
-    setIsSendingBatch(false);
+      toast.success("Fakturaer sendt", {
+        description: `${sentCount} faktura(er) til ${selectedByWorkspace.size} kunde(r) for totalt ${formatNOK(selectedTotal)}`,
+      });
+
+      setSelectedIds(new Set());
+      router.refresh();
+    } catch (error) {
+      toast.error("Feil", {
+        description: "Kunne ikke sende fakturaer",
+      });
+    } finally {
+      setIsSendingBatch(false);
+    }
   };
 
-  const handleSendSingle = async (project: UninvoicedProject) => {
-    setSendingSingleId(project.id);
+  const handleSendSingle = async (item: UninvoicedLineItemRow) => {
+    if (!item.workspaceOrgNumber) {
+      toast.error("Mangler org.nr", {
+        description: "Kunden mangler organisasjonsnummer",
+      });
+      return;
+    }
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    setSendingSingleId(item.id);
 
-    console.log("Sending single invoice for:", project);
+    try {
+      // Create invoice from single line item
+      const result = await createInvoiceFromLineItemsAction([item.id]);
 
-    toast.success("Faktura sendt", {
-      description: `${project.workspaceName} – ${formatNOK(project.amount)}`,
-    });
+      if (!result.success) {
+        toast.error("Feil", { description: result.error });
+        return;
+      }
 
-    setSendingSingleId(null);
+      // Send to Fiken
+      const sendResult = await sendInvoiceToFikenAction(
+        result.data.invoiceIds[0]
+      );
+
+      if (!sendResult.success) {
+        toast.error("Feil", { description: sendResult.error });
+        return;
+      }
+
+      toast.success("Faktura sendt", {
+        description: `${item.workspaceName} – ${formatNOK(item.amountOre)}`,
+      });
+
+      router.refresh();
+    } catch (error) {
+      toast.error("Feil", {
+        description: "Kunne ikke sende faktura",
+      });
+    } finally {
+      setSendingSingleId(null);
+    }
   };
 
-  if (projects.length === 0) {
+  if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-center">
         <div
@@ -199,124 +285,155 @@ export function UninvoicedTable() {
       </Alert>
 
       {/* Table */}
-      <div className="rounded-xl bg-card shadow-xs ring-1 ring-foreground/10">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-12">
-                <Checkbox
-                  checked={
-                    allSelected || (someSelected ? "indeterminate" : false)
-                  }
-                  onCheckedChange={toggleAll}
-                  aria-label="Velg alle"
-                />
-              </TableHead>
-              <TableHead>Prosjekt</TableHead>
-              <TableHead>Kunde</TableHead>
-              <TableHead className="text-center">Bilder</TableHead>
-              <TableHead className="text-right">Beløp</TableHead>
-              <TableHead>Fullført</TableHead>
-              <TableHead className="w-24"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {projects.map((project) => (
-              <TableRow
-                key={project.id}
-                onClick={() => toggleProject(project.id)}
-                className={`cursor-pointer transition-colors hover:bg-muted/50 ${selectedIds.has(project.id) ? "bg-muted/30" : ""}`}
-              >
-                <TableCell onClick={(e) => e.stopPropagation()}>
+      <TooltipProvider>
+        <div className="rounded-xl bg-card shadow-xs ring-1 ring-foreground/10">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-12">
                   <Checkbox
-                    checked={selectedIds.has(project.id)}
-                    onCheckedChange={() => toggleProject(project.id)}
-                    aria-label={`Velg ${project.name}`}
+                    checked={
+                      allSelected || (someSelected ? "indeterminate" : false)
+                    }
+                    onCheckedChange={toggleAll}
+                    aria-label="Velg alle"
                   />
-                </TableCell>
-                <TableCell>
-                  <div className="font-medium">{project.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {project.id}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="flex h-7 w-7 items-center justify-center rounded-md"
-                      style={{
-                        backgroundColor:
-                          "color-mix(in oklch, var(--accent-violet) 15%, transparent)",
-                      }}
-                    >
-                      <IconBuilding
-                        className="h-4 w-4"
-                        style={{ color: "var(--accent-violet)" }}
-                      />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium">
-                        {project.workspaceName}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Org: {project.workspaceOrgNumber}
-                      </div>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell className="text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <IconPhoto className="h-4 w-4 text-muted-foreground" />
-                    <span className="tabular-nums">{project.imageCount}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <span
-                    className="font-mono font-semibold"
-                    style={{ color: "var(--accent-amber)" }}
-                  >
-                    {formatNOK(project.amount)}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <span className="text-sm text-muted-foreground">
-                    {project.completedAt.toLocaleDateString("nb-NO", {
-                      day: "numeric",
-                      month: "short",
-                    })}
-                  </span>
-                </TableCell>
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleSendSingle(project)}
-                    disabled={sendingSingleId === project.id}
-                    className="h-8"
-                  >
-                    {sendingSingleId === project.id ? (
-                      <IconLoader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <IconSend className="h-4 w-4" />
-                    )}
-                  </Button>
-                </TableCell>
+                </TableHead>
+                <TableHead>Prosjekt</TableHead>
+                <TableHead>Kunde</TableHead>
+                <TableHead className="text-center">Type</TableHead>
+                <TableHead className="text-right">Beløp</TableHead>
+                <TableHead>Opprettet</TableHead>
+                <TableHead className="w-24"></TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => {
+                const isVideo = !!item.videoProjectId;
+                const itemName = item.projectName || item.videoProjectName || "Ukjent";
+                const hasMissingOrg = !item.workspaceOrgNumber;
 
-        {/* Footer */}
-        <div className="border-t px-4 py-3 text-sm text-muted-foreground">
-          <span
-            className="font-mono font-semibold"
-            style={{ color: "var(--accent-amber)" }}
-          >
-            {projects.length}
-          </span>{" "}
-          prosjekter venter på fakturering
+                return (
+                  <TableRow
+                    key={item.id}
+                    onClick={() => toggleItem(item.id)}
+                    className={`cursor-pointer transition-colors hover:bg-muted/50 ${selectedIds.has(item.id) ? "bg-muted/30" : ""}`}
+                  >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.has(item.id)}
+                        onCheckedChange={() => toggleItem(item.id)}
+                        aria-label={`Velg ${itemName}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{itemName}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {item.description}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="flex h-7 w-7 items-center justify-center rounded-md"
+                          style={{
+                            backgroundColor: hasMissingOrg
+                              ? "color-mix(in oklch, var(--accent-red) 15%, transparent)"
+                              : "color-mix(in oklch, var(--accent-violet) 15%, transparent)",
+                          }}
+                        >
+                          {hasMissingOrg ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <IconAlertTriangle
+                                  className="h-4 w-4"
+                                  style={{ color: "var(--accent-red)" }}
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Mangler org.nr – kan ikke faktureres
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <IconBuilding
+                              className="h-4 w-4"
+                              style={{ color: "var(--accent-violet)" }}
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium">
+                            {item.workspaceName}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {item.workspaceOrgNumber
+                              ? `Org: ${item.workspaceOrgNumber}`
+                              : "Mangler org.nr"}
+                          </div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {isVideo ? (
+                          <IconVideo className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <IconPhoto className="h-4 w-4 text-muted-foreground" />
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {isVideo ? "Video" : "Foto"}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span
+                        className="font-mono font-semibold"
+                        style={{ color: "var(--accent-amber)" }}
+                      >
+                        {formatNOK(item.amountOre)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">
+                        {item.createdAt.toLocaleDateString("nb-NO", {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </span>
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSendSingle(item)}
+                        disabled={sendingSingleId === item.id || hasMissingOrg}
+                        className="h-8"
+                      >
+                        {sendingSingleId === item.id ? (
+                          <IconLoader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <IconSend className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+
+          {/* Footer */}
+          <div className="border-t px-4 py-3 text-sm text-muted-foreground">
+            <span
+              className="font-mono font-semibold"
+              style={{ color: "var(--accent-amber)" }}
+            >
+              {items.length}
+            </span>{" "}
+            prosjekter venter på fakturering
+          </div>
         </div>
-      </div>
+      </TooltipProvider>
     </div>
   );
 }

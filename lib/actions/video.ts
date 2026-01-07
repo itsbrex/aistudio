@@ -244,6 +244,19 @@ export async function triggerVideoGeneration(videoProjectId: string) {
       );
     }
 
+    // Create invoice line item for video generation billing
+    try {
+      const { createVideoInvoiceLineItemAction } = await import("@/lib/actions/billing");
+      await createVideoInvoiceLineItemAction(
+        projectData.videoProject.workspaceId,
+        videoProjectId,
+        projectData.videoProject.name
+      );
+    } catch (billingError) {
+      // Log but don't fail the video generation if billing fails
+      console.error("[triggerVideoGeneration] Failed to create invoice line item:", billingError);
+    }
+
     revalidatePath(`/video/${videoProjectId}`);
 
     return { success: true, runId: handle.id };

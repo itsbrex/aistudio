@@ -1,10 +1,42 @@
 import { IconFileInvoice } from "@tabler/icons-react";
 import { BillingStatsBar } from "@/components/admin/billing/billing-stats-bar";
 import { BillingTabs } from "@/components/admin/billing/billing-tabs";
-import { getBillingStats } from "@/lib/mock/admin-billing";
+import { requireSystemAdmin } from "@/lib/admin-auth";
+import {
+  getBillingStats,
+  getUninvoicedLineItems,
+  getInvoiceHistory,
+  getAffiliateRelationships,
+  getAffiliateEarnings,
+  getAffiliateStats,
+} from "@/lib/db/queries";
 
-export default function AdminBillingPage() {
-  const stats = getBillingStats();
+export default async function AdminBillingPage() {
+  // Ensure user is system admin
+  await requireSystemAdmin();
+
+  // Fetch all billing data in parallel
+  const [stats, uninvoicedItems, invoices, affiliateRelationships, affiliateEarnings, affiliateStats] =
+    await Promise.all([
+      getBillingStats(),
+      getUninvoicedLineItems(),
+      getInvoiceHistory(),
+      getAffiliateRelationships(),
+      getAffiliateEarnings(),
+      getAffiliateStats(),
+    ]);
+
+  // Transform stats for the stats bar component (convert ore to NOK)
+  const formattedStats = {
+    uninvoicedCount: stats.uninvoicedCount,
+    uninvoicedAmount: stats.uninvoicedAmountOre / 100,
+    pendingPayment: stats.pendingPaymentCount,
+    pendingPaymentAmount: stats.pendingPaymentAmountOre / 100,
+    invoicedThisMonth: stats.invoicedThisMonthCount,
+    invoicedAmountThisMonth: stats.invoicedThisMonthAmountOre / 100,
+    invoicedCount: stats.totalInvoicedCount,
+    invoicedAmount: stats.totalInvoicedAmountOre / 100,
+  };
 
   return (
     <div className="space-y-6 px-4 md:px-6 lg:px-8">
@@ -28,12 +60,18 @@ export default function AdminBillingPage() {
 
       {/* Stats Bar */}
       <div className="animate-fade-in-up stagger-1">
-        <BillingStatsBar stats={stats} />
+        <BillingStatsBar stats={formattedStats} />
       </div>
 
-      {/* Tabs: Uninvoiced / History */}
+      {/* Tabs: Uninvoiced / History / Affiliates */}
       <div className="animate-fade-in-up stagger-2">
-        <BillingTabs />
+        <BillingTabs
+          uninvoicedItems={uninvoicedItems}
+          invoices={invoices}
+          affiliateRelationships={affiliateRelationships}
+          affiliateEarnings={affiliateEarnings}
+          affiliateStats={affiliateStats}
+        />
       </div>
     </div>
   );
