@@ -70,7 +70,6 @@ interface DashboardContentProps {
     completedProjects: number;
     processingProjects: number;
     totalImages: number;
-    totalCost: number;
   };
 }
 
@@ -127,7 +126,6 @@ export function DashboardContent({ projects, stats }: DashboardContentProps) {
             totalProperties={stats.totalProjects}
             activeProperties={stats.completedProjects}
             totalEdits={stats.totalImages}
-            totalCost={stats.totalCost}
           />
 
           {/* Content based on view mode */}

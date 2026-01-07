@@ -80,16 +80,6 @@ const TagsCell = memo(({ tags }: { tags: string[] }) => (
 ));
 TagsCell.displayName = "TagsCell";
 
-const CostCell = memo(({ cost }: { cost: number }) => (
-  <span
-    className="font-mono text-sm font-medium"
-    style={{ color: "var(--accent-amber)" }}
-  >
-    ${cost.toFixed(2)}
-  </span>
-));
-CostCell.displayName = "CostCell";
-
 const ActionsCell = memo(({ propertyId }: { propertyId: string }) => (
   <div className="flex items-center justify-center">
     <DropdownMenu>
@@ -162,14 +152,6 @@ export const columns: ColumnDef<Property>[] = [
     cell: ({ row }) => (
       <span className="font-mono text-sm">{row.original.editCount}</span>
     ),
-  },
-  {
-    id: "totalCost",
-    accessorKey: "totalCost",
-    header: "AI Cost",
-    size: 100,
-    minSize: 80,
-    cell: ({ row }) => <CostCell cost={row.original.totalCost} />,
   },
   {
     id: "actions",

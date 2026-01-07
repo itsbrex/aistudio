@@ -324,7 +324,6 @@ export async function getProjectStats(workspaceId: string): Promise<{
   completedProjects: number;
   processingProjects: number;
   totalImages: number;
-  totalCost: number;
 }> {
   const [totalResult] = await db
     .select({ count: count() })
@@ -356,21 +355,11 @@ export async function getProjectStats(workspaceId: string): Promise<{
     .from(project)
     .where(eq(project.workspaceId, workspaceId));
 
-  const [completedImagesResult] = await db
-    .select({ total: sum(project.completedCount) })
-    .from(project)
-    .where(eq(project.workspaceId, workspaceId));
-
-  // Calculate cost: $0.039 per completed image
-  const completedImages = Number(completedImagesResult?.total) || 0;
-  const totalCost = Math.round(completedImages * 0.039 * 100) / 100;
-
   return {
     totalProjects: totalResult?.count || 0,
     completedProjects: completedResult?.count || 0,
     processingProjects: processingResult?.count || 0,
     totalImages: Number(imagesResult?.total) || 0,
-    totalCost,
   };
 }
 
@@ -2106,6 +2095,98 @@ export async function getBillingStats(): Promise<BillingStats> {
     invoicedThisMonthAmountOre: Number(thisMonth?.amount) || 0,
     totalInvoicedCount: total?.count ?? 0,
     totalInvoicedAmountOre: Number(total?.amount) || 0,
+  };
+}
+
+// ============================================================================
+// Revenue Stats for Admin Dashboard
+// ============================================================================
+
+export interface RevenueStats {
+  totalRevenueOre: number;
+  thisMonthRevenueOre: number;
+  last30DaysRevenueOre: number;
+  thisYearRevenueOre: number;
+  paidRevenueOre: number;
+  invoiceCount: number;
+}
+
+export async function getRevenueStats(): Promise<RevenueStats> {
+  const now = new Date();
+
+  // Start of current month
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // 30 days ago
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  // Start of year
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+
+  // Total revenue (sent + paid invoices)
+  const [total] = await db
+    .select({
+      count: count(),
+      amount: sum(invoice.totalAmountOre),
+    })
+    .from(invoice)
+    .where(or(eq(invoice.status, "sent"), eq(invoice.status, "paid")));
+
+  // This month revenue
+  const [thisMonth] = await db
+    .select({
+      amount: sum(invoice.totalAmountOre),
+    })
+    .from(invoice)
+    .where(
+      and(
+        gt(invoice.createdAt, startOfMonth),
+        or(eq(invoice.status, "sent"), eq(invoice.status, "paid"))
+      )
+    );
+
+  // Last 30 days revenue
+  const [last30Days] = await db
+    .select({
+      amount: sum(invoice.totalAmountOre),
+    })
+    .from(invoice)
+    .where(
+      and(
+        gt(invoice.createdAt, thirtyDaysAgo),
+        or(eq(invoice.status, "sent"), eq(invoice.status, "paid"))
+      )
+    );
+
+  // This year revenue
+  const [thisYear] = await db
+    .select({
+      amount: sum(invoice.totalAmountOre),
+    })
+    .from(invoice)
+    .where(
+      and(
+        gt(invoice.createdAt, startOfYear),
+        or(eq(invoice.status, "sent"), eq(invoice.status, "paid"))
+      )
+    );
+
+  // Paid revenue only
+  const [paid] = await db
+    .select({
+      amount: sum(invoice.totalAmountOre),
+    })
+    .from(invoice)
+    .where(eq(invoice.status, "paid"));
+
+  return {
+    totalRevenueOre: Number(total?.amount) || 0,
+    thisMonthRevenueOre: Number(thisMonth?.amount) || 0,
+    last30DaysRevenueOre: Number(last30Days?.amount) || 0,
+    thisYearRevenueOre: Number(thisYear?.amount) || 0,
+    paidRevenueOre: Number(paid?.amount) || 0,
+    invoiceCount: total?.count ?? 0,
   };
 }
 

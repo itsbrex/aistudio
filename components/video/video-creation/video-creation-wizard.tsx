@@ -27,10 +27,6 @@ import {
   createVideoProject,
   triggerVideoGeneration,
 } from "@/lib/actions/video";
-import {
-  calculateVideoCost,
-  formatVideoCost,
-} from "@/lib/video/video-constants";
 import { SelectImagesStep } from "./steps/select-images-step";
 import { AssignRoomsStep } from "./steps/assign-rooms-step";
 import { SelectMusicStep } from "./steps/select-music-step";
@@ -266,11 +262,6 @@ export function VideoCreationWizard() {
   }, [creation, router]);
 
   const currentStepInfo = stepTitles[creation.step];
-  const estimatedCost = calculateVideoCost(
-    creation.images.length,
-    5, // Assuming default 5s clips for now
-    creation.generateNativeAudio
-  );
 
   // Determine which steps to show based on mode
   const steps = creation.selectedTemplateId ? TEMPLATE_STEPS : CUSTOM_STEPS;
@@ -386,7 +377,6 @@ export function VideoCreationWizard() {
                 onProjectNameChange={creation.setProjectName}
                 aspectRatio={creation.aspectRatio}
                 musicTrack={creation.selectedMusicTrack}
-                estimatedCost={estimatedCost}
               />
             )}
           </div>
@@ -408,22 +398,6 @@ export function VideoCreationWizard() {
                   <IconArrowLeft className="h-4 w-4" />
                   Back
                 </Button>
-              )}
-
-              {/* Cost Preview */}
-              {creation.images.length > 0 && (
-                <div className="hidden sm:flex items-center gap-2 rounded-full bg-(--accent-amber)/10 px-4 py-1.5 text-sm">
-                  <span className="text-muted-foreground">Est. cost:</span>
-                  <span
-                    className="font-semibold"
-                    style={{ color: "var(--accent-amber)" }}
-                  >
-                    {formatVideoCost(estimatedCost)}
-                  </span>
-                  <span className="text-muted-foreground">
-                    ({creation.images.length} clips)
-                  </span>
-                </div>
               )}
             </div>
 

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import {
   IconBuilding,
   IconSparkles,
-  IconCurrencyDollar,
   IconTrendingUp,
 } from "@tabler/icons-react";
 
@@ -57,17 +56,15 @@ type StatsBarProps = {
   totalProperties: number;
   activeProperties: number;
   totalEdits: number;
-  totalCost: number;
 };
 
 export function StatsBar({
   totalProperties,
   activeProperties,
   totalEdits,
-  totalCost,
 }: StatsBarProps) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="grid grid-cols-3 gap-3">
       <StatItem
         icon={<IconBuilding className="h-4 w-4" />}
         label="Total Properties"
@@ -88,13 +85,6 @@ export function StatsBar({
         value={totalEdits.toLocaleString()}
         accentColor="var(--accent-teal)"
         delay={200}
-      />
-      <StatItem
-        icon={<IconCurrencyDollar className="h-4 w-4" />}
-        label="Total Cost"
-        value={`$${totalCost.toFixed(2)}`}
-        accentColor="var(--accent-amber)"
-        delay={300}
       />
     </div>
   );

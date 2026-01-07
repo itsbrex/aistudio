@@ -79,14 +79,6 @@ const columnConfigs: ColumnConfig[] = [
     minWidth: 60,
     maxWidth: 100,
   },
-  {
-    id: "totalCost",
-    label: "Cost",
-    sortField: "totalCost",
-    width: 100,
-    minWidth: 80,
-    maxWidth: 120,
-  },
   { id: "actions", label: "", width: 60, minWidth: 60, maxWidth: 60 },
 ];
 

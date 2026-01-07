@@ -457,6 +457,62 @@ export async function updateUserNameAction(
 // Delete User
 // ============================================================================
 
+// ============================================================================
+// Fal.ai Usage Statistics
+// ============================================================================
+
+export interface FalUsageRecord {
+  billed_units: number;
+  billed_unit_price: number;
+  cost_cents: number;
+  timestamp: string;
+}
+
+export interface FalUsageResponse {
+  data: FalUsageRecord[];
+  next_cursor?: string | null;
+}
+
+export async function getFalUsageStats(
+  startDate: string,
+  endDate: string
+): Promise<ActionResult<FalUsageResponse>> {
+  const adminCheck = await verifySystemAdmin();
+  if (adminCheck.error) {
+    return { success: false, error: adminCheck.error };
+  }
+
+  try {
+    const falApiKey = process.env.FAL_API_KEY;
+    if (!falApiKey) {
+      return { success: false, error: "FAL_API_KEY not configured" };
+    }
+
+    // Correct endpoint: /platform-apis/v1/models/usage
+    const url = new URL("https://api.fal.ai/platform-apis/v1/models/usage");
+    url.searchParams.set("start", startDate);
+    url.searchParams.set("end", endDate);
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Key ${falApiKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[admin:getFalUsageStats] Fal API error:", errorText);
+      return { success: false, error: `Fal API error: ${response.status}` };
+    }
+
+    const data: FalUsageResponse = await response.json();
+    return { success: true, data };
+  } catch (error) {
+    console.error("[admin:getFalUsageStats] Error:", error);
+    return { success: false, error: "Failed to fetch Fal.ai usage stats" };
+  }
+}
+
 export async function deleteUserAction(
   userId: string
 ): Promise<ActionResult<void>> {

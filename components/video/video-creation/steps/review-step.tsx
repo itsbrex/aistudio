@@ -1,12 +1,10 @@
 "use client";
 
-import * as React from "react";
 import Image from "next/image";
 import {
   IconMovie,
   IconMusic,
   IconClock,
-  IconCurrencyDollar,
   IconPhoto,
   IconAspectRatio,
   IconArrowRight,
@@ -16,7 +14,6 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { VIDEO_ROOM_TYPES } from "@/lib/video/room-sequence";
-import { formatVideoCost } from "@/lib/video/video-constants";
 import type { VideoImageItem } from "@/hooks/use-video-creation";
 import type { MusicTrack, VideoAspectRatio } from "@/lib/db/schema";
 
@@ -26,7 +23,6 @@ interface ReviewStepProps {
   onProjectNameChange: (name: string) => void;
   aspectRatio: VideoAspectRatio;
   musicTrack: MusicTrack | null;
-  estimatedCost: number;
 }
 
 export function ReviewStep({
@@ -35,7 +31,6 @@ export function ReviewStep({
   onProjectNameChange,
   aspectRatio,
   musicTrack,
-  estimatedCost,
 }: ReviewStepProps) {
   const totalDuration = images.length * 5;
 
@@ -56,7 +51,7 @@ export function ReviewStep({
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div className="rounded-xl border bg-linear-to-br from-background to-muted/30 p-4">
           <div className="flex items-center gap-2 text-muted-foreground">
             <IconPhoto className="h-4 w-4" />
@@ -79,16 +74,6 @@ export function ReviewStep({
             <span className="text-sm">Aspect</span>
           </div>
           <div className="mt-2 text-2xl font-bold">{aspectRatio}</div>
-        </div>
-
-        <div className="rounded-xl border bg-linear-to-br from-(--accent-amber)/5 to-(--accent-amber)/10 p-4">
-          <div className="flex items-center gap-2 text-(--accent-amber)">
-            <IconCurrencyDollar className="h-4 w-4" />
-            <span className="text-sm">Est. Cost</span>
-          </div>
-          <div className="mt-2 text-2xl font-bold text-(--accent-amber)">
-            {formatVideoCost(estimatedCost)}
-          </div>
         </div>
       </div>
 
@@ -202,32 +187,6 @@ export function ReviewStep({
                 </div>
               );
             })}
-          </div>
-        </div>
-      </div>
-
-      {/* Cost Breakdown */}
-      <div className="rounded-xl border bg-muted/30 p-4">
-        <h4 className="mb-3 font-medium">Cost Breakdown</h4>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">
-              Video Clips ({images.length} × $0.35)
-            </span>
-            <span className="font-medium">
-              {formatVideoCost(images.length * 0.35)}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Video Compilation</span>
-            <span className="font-medium text-(--accent-green)">Free</span>
-          </div>
-          <div className="my-2 border-t" />
-          <div className="flex justify-between text-base">
-            <span className="font-medium">Total Estimated</span>
-            <span className="font-bold text-(--accent-amber)">
-              {formatVideoCost(estimatedCost)}
-            </span>
           </div>
         </div>
       </div>
