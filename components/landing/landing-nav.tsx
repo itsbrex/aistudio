@@ -84,7 +84,7 @@ export function LandingNav() {
             How It Works
           </Link>
           <Link
-            href="#pricing"
+            href="/pricing"
             className="text-sm font-medium transition-colors hover:opacity-70"
             style={{ color: "var(--landing-text-muted)" }}
           >

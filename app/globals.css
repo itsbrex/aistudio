@@ -156,9 +156,17 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    scroll-behavior: smooth;
+  }
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Scroll margin for anchor links (accounts for sticky header) */
+[id] {
+  scroll-margin-top: 5rem;
 }
 
 /* ============================================

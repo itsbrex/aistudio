@@ -12,11 +12,23 @@ type DashboardHeaderProps = {
   userLabel?: string;
 };
 
-const navItems = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  disabled?: boolean;
+};
+
+const navItems: NavItem[] = [
   { href: "/dashboard", label: "Projects", icon: IconSparkles },
-  { href: "/video", label: "Videos", icon: IconMovie },
+  {
+    href: "/video",
+    label: "Video (coming soon)",
+    icon: IconMovie,
+    disabled: true,
+  },
   { href: "/dashboard/settings", label: "Settings", icon: IconSettings },
-] as const;
+];
 
 export function DashboardHeader({ userLabel }: DashboardHeaderProps) {
   const pathname = usePathname();
@@ -39,27 +51,37 @@ export function DashboardHeader({ userLabel }: DashboardHeaderProps) {
             <nav className="flex items-center gap-1">
               {navItems.map((item) => {
                 const isActive =
-                  item.href === "/dashboard"
+                  !item.disabled &&
+                  (item.href === "/dashboard"
                     ? pathname === "/dashboard"
-                    : pathname.startsWith(item.href);
+                    : pathname.startsWith(item.href));
 
                 const Icon = item.icon;
 
                 return (
                   <Button
                     key={item.href}
-                    asChild
+                    asChild={!item.disabled}
                     variant={isActive ? "secondary" : "ghost"}
                     size="sm"
+                    disabled={item.disabled}
                     className={cn(
                       "h-8 gap-2 transition-all",
-                      isActive && "font-medium"
+                      isActive && "font-medium",
+                      item.disabled && "opacity-60 cursor-not-allowed"
                     )}
                   >
-                    <Link href={item.href}>
-                      <Icon className="size-4" />
-                      <span className="hidden sm:inline">{item.label}</span>
-                    </Link>
+                    {item.disabled ? (
+                      <div className="flex items-center gap-2">
+                        <Icon className="size-4" />
+                        <span className="hidden sm:inline">{item.label}</span>
+                      </div>
+                    ) : (
+                      <Link href={item.href}>
+                        <Icon className="size-4" />
+                        <span className="hidden sm:inline">{item.label}</span>
+                      </Link>
+                    )}
                   </Button>
                 );
               })}
