@@ -1338,6 +1338,7 @@ export interface AdminWorkspaceDetail {
     updatedAt: Date;
     suspendedAt: Date | null;
     suspendedReason: string | null;
+    invoiceEligible: boolean;
   };
   owner: {
     id: string;
@@ -1477,6 +1478,7 @@ export async function getAdminWorkspaceDetail(
       updatedAt: w.updatedAt,
       suspendedAt: w.suspendedAt,
       suspendedReason: w.suspendedReason,
+      invoiceEligible: w.invoiceEligible,
     },
     owner: owner
       ? {

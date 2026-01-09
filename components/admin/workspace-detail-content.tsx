@@ -234,6 +234,9 @@ export function WorkspaceDetailContent({
     plan: workspace.plan,
     suspendedAt: workspace.suspendedAt ? new Date(workspace.suspendedAt) : null,
     suspendedReason: workspace.suspendedReason,
+    invoiceEligible: workspace.invoiceEligible,
+    invoiceEligibleAt: null,
+    invitedByAdmin: false,
     createdAt: new Date(workspace.createdAt),
     updatedAt: new Date(),
   };

@@ -7,6 +7,7 @@ import {
   IconEdit,
   IconLoader2,
   IconMail,
+  IconReceipt,
   IconUser,
 } from "@tabler/icons-react";
 import * as React from "react";
@@ -29,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   updateWorkspaceDetailsAction,
@@ -94,6 +96,9 @@ export function EditWorkspaceDialog({
   const [suspendedReason, setSuspendedReason] = useState(
     workspace.suspendedReason || ""
   );
+  const [invoiceEligible, setInvoiceEligible] = useState(
+    workspace.invoiceEligible
+  );
 
   // Reset form when workspace changes
   React.useEffect(() => {
@@ -104,6 +109,7 @@ export function EditWorkspaceDialog({
     setStatus(workspace.status as WorkspaceStatus);
     setPlan(workspace.plan as WorkspacePlan);
     setSuspendedReason(workspace.suspendedReason || "");
+    setInvoiceEligible(workspace.invoiceEligible);
   }, [workspace]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -121,6 +127,8 @@ export function EditWorkspaceDialog({
 
         const statusChanged = status !== workspace.status;
         const planChanged = plan !== workspace.plan;
+        const invoiceEligibleChanged =
+          invoiceEligible !== workspace.invoiceEligible;
 
         // Update details if changed
         if (detailsChanged) {
@@ -158,6 +166,21 @@ export function EditWorkspaceDialog({
           }
         }
 
+        // Update invoice eligibility if changed
+        if (invoiceEligibleChanged) {
+          const { setWorkspaceInvoiceEligibility } = await import(
+            "@/lib/actions/payments"
+          );
+          const result = await setWorkspaceInvoiceEligibility(
+            workspace.id,
+            invoiceEligible
+          );
+          if (!result.success) {
+            toast.error(result.error);
+            return;
+          }
+        }
+
         setSaved(true);
         toast.success("Workspace updated successfully");
 
@@ -183,6 +206,7 @@ export function EditWorkspaceDialog({
       setStatus(workspace.status as WorkspaceStatus);
       setPlan(workspace.plan as WorkspacePlan);
       setSuspendedReason(workspace.suspendedReason || "");
+      setInvoiceEligible(workspace.invoiceEligible);
       setSaved(false);
       onOpenChange(false);
     }
@@ -195,6 +219,7 @@ export function EditWorkspaceDialog({
     contactPerson !== (workspace.contactPerson || "") ||
     status !== workspace.status ||
     plan !== workspace.plan ||
+    invoiceEligible !== workspace.invoiceEligible ||
     (status === "suspended" &&
       suspendedReason !== (workspace.suspendedReason || ""));
 
@@ -418,6 +443,43 @@ export function EditWorkspaceDialog({
                     />
                   </div>
                 )}
+              </div>
+
+              {/* Billing Section */}
+              <div className="space-y-4">
+                <h4 className="font-medium text-[11px] text-muted-foreground uppercase tracking-wider">
+                  Billing
+                </h4>
+
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="flex h-9 w-9 items-center justify-center rounded-lg"
+                      style={{
+                        backgroundColor:
+                          "color-mix(in oklch, var(--accent-amber) 15%, transparent)",
+                      }}
+                    >
+                      <IconReceipt
+                        className="h-4 w-4"
+                        style={{ color: "var(--accent-amber)" }}
+                      />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="font-medium text-sm">
+                        Invoice Billing
+                      </Label>
+                      <p className="text-muted-foreground text-xs">
+                        Pay via invoice instead of Stripe (Norwegian B2B)
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={invoiceEligible}
+                    disabled={isPending}
+                    onCheckedChange={setInvoiceEligible}
+                  />
+                </div>
               </div>
             </>
           )}
