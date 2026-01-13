@@ -116,7 +116,7 @@ function RealtimeProcessingLabel({
   });
 
   // Track completion
-  const prevStatusRef = React.useRef<string | undefined>();
+  const prevStatusRef = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
     const currentStatus = run?.status;
     if (prevStatusRef.current !== currentStatus) {
@@ -813,7 +813,9 @@ export function ProjectDetailContent({
     for (const [rootId, versions] of grouped) {
       versions.sort((a, b) => (a.version || 1) - (b.version || 1));
       const latestVersion = versions.at(-1);
-      groups.push({ rootId, versions, latestVersion });
+      if (latestVersion) {
+        groups.push({ rootId, versions, latestVersion });
+      }
     }
 
     // Sort groups by the latest version's creation date (most recent first)
@@ -871,7 +873,6 @@ export function ProjectDetailContent({
       );
       if (result.success) {
         setRoomTypeSelectedIds(new Set());
-        setRoomTypeSelectionMode(false);
         toast.success(`Updated ${result.data.updatedCount} image(s)`);
         router.refresh();
       } else {
@@ -986,7 +987,7 @@ export function ProjectDetailContent({
     });
   };
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = React.useCallback(() => {
     const hasSelection = selectedImageIds.size > 0;
     const count = hasSelection ? selectedImageIds.size : completedImages.length;
 
