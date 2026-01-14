@@ -2,6 +2,7 @@
 
 import {
   IconArrowBackUp,
+  IconCheck,
   IconLoader2,
   IconPlus,
   IconSparkles,
@@ -604,11 +605,22 @@ export function ImageMaskEditor({
       return;
     }
 
+    // Check if mask is drawn
+    if (canvasHistory.length === 0) {
+      // Show toast prompting user to draw mask
+      toast.info("Please draw where you want to add the object", {
+        duration: 3000,
+      });
+      // Close dialog so user can draw mask
+      setShowObjectRefinementDialog(false);
+      return;
+    }
+
     setShowObjectRefinementDialog(false);
 
-    // Proceed with add - this will create mask and generate prompt
+    // Proceed with add - mask exists
     await proceedWithAdd();
-  }, [objectDetails, proceedWithAdd]);
+  }, [objectDetails, canvasHistory.length, proceedWithAdd]);
 
   // Handle escape key
   React.useEffect(() => {
@@ -735,128 +747,215 @@ export function ImageMaskEditor({
 
         {/* Background image + Canvas */}
         {imageLoaded && imageDimensions.width > 0 && (
-          <div
-            className="relative"
-            onMouseLeave={handleCanvasMouseLeave}
-            onMouseMove={handleCanvasMouseMove}
-            style={{
-              width: imageDimensions.width,
-              height: imageDimensions.height,
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              alt="Source"
-              className="absolute inset-0 h-full w-full rounded-lg object-cover"
-              src={sourceImageUrl}
-            />
+          <>
+            {mode === "add" ? (
+              /* Add mode: Image and panel side-by-side */
+              <div className="mx-auto flex w-full max-w-7xl flex-col items-center gap-6 lg:flex-row">
+                {/* Image container - left side */}
+                <div className="w-full shrink-0 lg:w-auto">
+                  <div
+                    className="relative"
+                    onMouseLeave={handleCanvasMouseLeave}
+                    onMouseMove={handleCanvasMouseMove}
+                    style={{
+                      width: imageDimensions.width,
+                      height: imageDimensions.height,
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      alt="Source"
+                      className="absolute inset-0 h-full w-full rounded-lg object-cover"
+                      src={sourceImageUrl}
+                    />
 
-            {/* Canvas overlay */}
-            <canvas
-              className="absolute inset-0 rounded-lg"
-              ref={canvasRef}
-              style={{ cursor: "none" }}
-            />
+                    {/* Canvas overlay */}
+                    <canvas
+                      className="absolute inset-0 rounded-lg"
+                      ref={canvasRef}
+                      style={{ cursor: "none" }}
+                    />
 
-            {/* Add mode placement indicator */}
-            {mode === "add" && maskBounds && (
+                    {/* Add mode placement indicator */}
+                    {maskBounds && (
+                      <div
+                        className="pointer-events-none absolute rounded-lg border-2 border-green-400 border-dashed bg-green-400/10"
+                        style={{
+                          left: maskBounds.x,
+                          top: maskBounds.y,
+                          width: maskBounds.width,
+                          height: maskBounds.height,
+                        }}
+                      >
+                        <div className="absolute -top-6 left-0 whitespace-nowrap font-medium text-green-400 text-xs">
+                          Object placement area
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Brush size preview cursor */}
+                    {isCanvasReady && cursorPosition && (
+                      <div
+                        className="pointer-events-none absolute rounded-full border-2"
+                        style={{
+                          width: brushSize,
+                          height: brushSize,
+                          left: cursorPosition.x - brushSize / 2,
+                          top: cursorPosition.y - brushSize / 2,
+                          borderColor: "rgb(34, 197, 94)",
+                          backgroundColor: "rgba(34, 197, 94, 0.2)",
+                        }}
+                      />
+                    )}
+
+                    {/* Canvas loading indicator */}
+                    {!isCanvasReady && (
+                      <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30">
+                        <IconLoader2 className="h-6 w-6 animate-spin text-white" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quick Add Panel - right side */}
+                <div className="w-full shrink-0 lg:w-80">
+                  <div className="rounded-lg border border-white/20 bg-black/90 p-4 shadow-xl backdrop-blur-sm">
+                    {/* Step indicators */}
+                    <div className="mb-4 space-y-2">
+                      <div
+                        className={cn(
+                          "flex items-center gap-2 text-xs",
+                          objectToAdd.trim()
+                            ? "text-green-400"
+                            : "text-white/50"
+                        )}
+                      >
+                        {objectToAdd.trim() ? (
+                          <IconCheck className="h-4 w-4" />
+                        ) : (
+                          <div className="h-4 w-4 rounded-full border-2 border-white/30" />
+                        )}
+                        <span>Select object</span>
+                      </div>
+                      <div
+                        className={cn(
+                          "flex items-center gap-2 text-xs",
+                          canvasHistory.length > 0
+                            ? "text-green-400"
+                            : "text-white/50"
+                        )}
+                      >
+                        {canvasHistory.length > 0 ? (
+                          <IconCheck className="h-4 w-4" />
+                        ) : (
+                          <div className="h-4 w-4 rounded-full border-2 border-white/30" />
+                        )}
+                        <span>Draw placement area</span>
+                      </div>
+                    </div>
+
+                    <p className="mb-2 font-medium text-white/70 text-xs">
+                      Quick add:
+                    </p>
+                    <div className="mb-3 flex flex-wrap gap-1.5">
+                      {OBJECT_SUGGESTIONS.map((suggestion) => (
+                        <button
+                          className={cn(
+                            "rounded-full px-2.5 py-1 font-medium text-xs transition-colors",
+                            objectToAdd === suggestion
+                              ? "bg-green-500 text-white"
+                              : "bg-white/10 text-white/80 hover:bg-white/20"
+                          )}
+                          key={suggestion}
+                          onClick={() => setObjectToAdd(suggestion)}
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        className="h-8 flex-1 border-white/20 bg-white/10 text-sm text-white placeholder:text-white/40"
+                        disabled={isProcessing}
+                        onChange={(e) => setObjectToAdd(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (
+                            e.key === "Enter" &&
+                            objectToAdd.trim() &&
+                            !isProcessing
+                          ) {
+                            handleSubmit();
+                          }
+                        }}
+                        placeholder="Or type custom…"
+                        value={objectToAdd}
+                      />
+                      <Button
+                        className="h-8 gap-1.5 bg-green-500 hover:bg-green-600"
+                        disabled={isProcessing || !objectToAdd.trim()}
+                        onClick={handleSubmit}
+                        size="sm"
+                      >
+                        {isProcessing ? (
+                          <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <IconSparkles className="h-3.5 w-3.5" />
+                        )}
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Remove mode: Original centered layout */
               <div
-                className="pointer-events-none absolute rounded-lg border-2 border-green-400 border-dashed bg-green-400/10"
+                className="relative"
+                onMouseLeave={handleCanvasMouseLeave}
+                onMouseMove={handleCanvasMouseMove}
                 style={{
-                  left: maskBounds.x,
-                  top: maskBounds.y,
-                  width: maskBounds.width,
-                  height: maskBounds.height,
+                  width: imageDimensions.width,
+                  height: imageDimensions.height,
                 }}
               >
-                <div className="absolute -top-6 left-0 whitespace-nowrap font-medium text-green-400 text-xs">
-                  Object placement area
-                </div>
-              </div>
-            )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  alt="Source"
+                  className="absolute inset-0 h-full w-full rounded-lg object-cover"
+                  src={sourceImageUrl}
+                />
 
-            {/* Brush size preview cursor */}
-            {isCanvasReady && cursorPosition && (
-              <div
-                className="pointer-events-none absolute rounded-full border-2"
-                style={{
-                  width: brushSize,
-                  height: brushSize,
-                  left: cursorPosition.x - brushSize / 2,
-                  top: cursorPosition.y - brushSize / 2,
-                  borderColor:
-                    mode === "remove" ? "rgb(239, 68, 68)" : "rgb(34, 197, 94)",
-                  backgroundColor:
-                    mode === "remove"
-                      ? "rgba(239, 68, 68, 0.2)"
-                      : "rgba(34, 197, 94, 0.2)",
-                }}
-              />
-            )}
+                {/* Canvas overlay */}
+                <canvas
+                  className="absolute inset-0 rounded-lg"
+                  ref={canvasRef}
+                  style={{ cursor: "none" }}
+                />
 
-            {/* Canvas loading indicator */}
-            {!isCanvasReady && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30">
-                <IconLoader2 className="h-6 w-6 animate-spin text-white" />
-              </div>
-            )}
-
-            {/* Floating input panel for Add mode - always visible */}
-            {mode === "add" && (
-              <div className="absolute top-4 right-4 z-10 w-64 rounded-lg border border-white/20 bg-black/90 p-3 shadow-xl backdrop-blur-sm">
-                <p className="mb-2 font-medium text-white/70 text-xs">
-                  Quick add:
-                </p>
-                <div className="mb-3 flex flex-wrap gap-1.5">
-                  {OBJECT_SUGGESTIONS.map((suggestion) => (
-                    <button
-                      className={cn(
-                        "rounded-full px-2.5 py-1 font-medium text-xs transition-colors",
-                        objectToAdd === suggestion
-                          ? "bg-green-500 text-white"
-                          : "bg-white/10 text-white/80 hover:bg-white/20"
-                      )}
-                      key={suggestion}
-                      onClick={() => setObjectToAdd(suggestion)}
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    className="h-8 flex-1 border-white/20 bg-white/10 text-sm text-white placeholder:text-white/40"
-                    disabled={isProcessing}
-                    onChange={(e) => setObjectToAdd(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && objectToAdd.trim()) {
-                        handleSubmit();
-                      }
+                {/* Brush size preview cursor */}
+                {isCanvasReady && cursorPosition && (
+                  <div
+                    className="pointer-events-none absolute rounded-full border-2"
+                    style={{
+                      width: brushSize,
+                      height: brushSize,
+                      left: cursorPosition.x - brushSize / 2,
+                      top: cursorPosition.y - brushSize / 2,
+                      borderColor: "rgb(239, 68, 68)",
+                      backgroundColor: "rgba(239, 68, 68, 0.2)",
                     }}
-                    placeholder="Or type custom…"
-                    value={objectToAdd}
                   />
-                  <Button
-                    className="h-8 gap-1.5 bg-green-500 hover:bg-green-600"
-                    disabled={
-                      isProcessing ||
-                      !objectToAdd.trim() ||
-                      canvasHistory.length === 0
-                    }
-                    onClick={handleSubmit}
-                    size="sm"
-                  >
-                    {isProcessing ? (
-                      <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <IconSparkles className="h-3.5 w-3.5" />
-                    )}
-                    Add
-                  </Button>
-                </div>
+                )}
+
+                {/* Canvas loading indicator */}
+                {!isCanvasReady && (
+                  <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30">
+                    <IconLoader2 className="h-6 w-6 animate-spin text-white" />
+                  </div>
+                )}
               </div>
             )}
-          </div>
+          </>
         )}
       </div>
 
@@ -891,18 +990,15 @@ export function ImageMaskEditor({
           ) : (
             <>
               <p className="text-white/70">
-                {canvasHistory.length === 0
-                  ? "Draw where you want to add the object"
-                  : "Object will be added in the marked area"}
+                {objectToAdd.trim()
+                  ? canvasHistory.length === 0
+                    ? "Draw where you want to add the object, then click 'Add Object'"
+                    : "Ready! Click 'Add Object' to continue"
+                  : "Select or type an object to add"}
               </p>
               <Button
                 className="min-w-[120px] gap-2 bg-green-500 hover:bg-green-600"
-                disabled={
-                  isProcessing ||
-                  !isCanvasReady ||
-                  !objectToAdd.trim() ||
-                  canvasHistory.length === 0
-                }
+                disabled={isProcessing || !isCanvasReady || !objectToAdd.trim()}
                 onClick={handleSubmit}
               >
                 {isProcessing ? (
